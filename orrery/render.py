@@ -257,12 +257,8 @@ def _draw_body(canvas: Canvas, body: Body, sx: float, sy: float, depth: float, s
         return
     glyph = "o" if opts.ascii else "●"
     canvas.put(col, row, Cell(glyph, body.color, bold=True), depth + 1e6)
-    if body.key == "saturn":  # a hint of rings
-        for dc, ch in ((-1, "-" if opts.ascii else "╶"), (1, "-" if opts.ascii else "╴")):
-            if canvas.free(col + dc, row):
-                canvas.put(col + dc, row, Cell(ch, shade(body.color, 0.8)), depth + 1e6)
     if body.key == opts.selected:
-        for dc, ch in ((-2 if body.key == "saturn" else -1, "["), (2 if body.key == "saturn" else 1, "]")):
+        for dc, ch in ((-1, "["), (1, "]")):
             if canvas.free(col + dc, row):
                 canvas.put(col + dc, row, Cell(ch, (255, 255, 255), bold=True), depth + 1e6)
 
@@ -270,7 +266,7 @@ def _draw_body(canvas: Canvas, body: Body, sx: float, sy: float, depth: float, s
 def _draw_label(canvas: Canvas, body: Body, sx: float, sy: float, selected: bool) -> None:
     col, row = int(sx) // 2, int(sy) // 4
     name = f" {body.name} " if selected else body.name
-    pad = 3 if body.key == "saturn" or selected else 2
+    pad = 3 if selected else 2
     for c0, r0 in ((col + pad, row), (col - pad - len(name) + 1, row), (col - len(name) // 2, row - 1), (col - len(name) // 2, row + 1)):
         if all(canvas.free(c0 + i, r0) for i in range(len(name))) and all(
             canvas.cells[r0][c] is None for c in (c0 - 1, c0 + len(name)) if 0 <= c < canvas.cols
