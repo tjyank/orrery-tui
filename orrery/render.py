@@ -52,7 +52,7 @@ class Camera:
 
     def rotate(self, dyaw: float = 0.0, dpitch: float = 0.0) -> None:
         self.yaw = (self.yaw + dyaw) % math.tau
-        self.pitch = max(math.radians(-89.0), min(math.radians(89.0), self.pitch + dpitch))
+        self.pitch = max(-math.pi / 2, min(math.pi / 2, self.pitch + dpitch))
 
 
 class Projector:
