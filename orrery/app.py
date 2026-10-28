@@ -32,7 +32,7 @@ MOON_REANCHOR_DRIFT_DAYS = 2  # moon orbits are perturbed faster, so re-fetch so
 FLASH_S = 4  # how long transient footer messages stay up
 JUMP_RESET_DAYS = 45  # after a jump this far, switch to the offline model at once while Horizons loads
 EVENT_ALERT_MAX_RATE = 3_600  # announce events as they begin only at up to 1 hr/s (any faster is a blur)
-DOUBLE_CLICK_S = 0.4
+DOUBLE_CLICK_S = 0.5  # Windows' default double-click time
 
 # Simulated seconds per real second.
 RATES = [-31_557_600, -2_592_000, -604_800, -86_400, -3_600, -60, -1, 1, 60, 3_600, 86_400, 604_800, 2_592_000, 31_557_600]
@@ -286,6 +286,7 @@ class App:
         self.drag: tuple[int, int] | None = None
         self.dragged = False
         self.last_click: tuple[str, float] | None = None
+        self.disc: tuple[float, float, float] | None = None  # moon view: planet disc, terminal cells
 
         if not args.fresh and not args.once:
             self.apply_settings(settings.load())
@@ -588,8 +589,11 @@ class App:
             self.drag, self.dragged = (ev.col, ev.row), False
         elif ev.kind == "drag" and ev.button == 0 and self.drag and not self.menu:
             dx, dy = ev.col - self.drag[0], ev.row - self.drag[1]
-            cam.rotate(dyaw=-math.radians(2) * dx, dpitch=math.radians(4) * dy)  # cells are ~2× taller than wide
-            self.drag, self.dragged = (ev.col, ev.row), True
+            # Terminals can report motion without the pointer leaving its cell; only a real move
+            # is a drag, so a click (or either half of a double click) isn't swallowed by one.
+            if dx or dy:
+                cam.rotate(dyaw=-math.radians(2) * dx, dpitch=math.radians(4) * dy)  # cells are ~2× taller than wide
+                self.drag, self.dragged = (ev.col, ev.row), True
         elif ev.kind == "release" and ev.button == 0:
             was_drag, self.drag = self.dragged, None
             if not was_drag:
@@ -623,20 +627,29 @@ class App:
         now = time.monotonic()
         double = self.last_click is not None and self.last_click[0] == key and now - self.last_click[1] < DOUBLE_CLICK_S
         self.last_click = (key, now)
-        self.active_opts.selected = key
-        if double:  # double click: open a planet's moons, or follow a moon
-            if self.system:
-                self.sys_follow = key != self.system
-            elif MOONS_OF.get(key):
+        self.active_opts.selected = key  # a single click selects: the panel shows its details
+        if double:
+            if self.system:  # in the moon view: follow what was double-clicked, moon or planet
+                self.sys_follow = True
+            elif key in MOONS_OF:  # a planet: open its system
+                self.last_click = None
                 self.enter_system(key)
+            else:  # the Sun or a small body: follow it
+                self.follow = True
 
     def pick(self, col: int, row: int) -> str | None:
-        """The body drawn nearest a clicked cell, within a few cells."""
+        """The body drawn at or nearest a clicked cell (within a few cells)."""
         best, best_d = None, 3.5
         for key, (c, r) in self.hits.items():
             d = math.hypot(c - col, 2 * (r - row))  # a row is about two columns tall
             if d < best_d:
                 best, best_d = key, d
+        if self.system and self.disc:
+            # The planet is a disc, not a point: a click anywhere on it picks it, unless a moon
+            # drawn over it is right under the pointer.
+            cx, cy, rc = self.disc
+            if math.hypot(col + 0.5 - cx, 2 * (row + 0.5 - cy)) <= rc + 1 and not (best != self.system and best_d <= 1.5):
+                return self.system
         return best
 
     # ---- drawing ----------------------------------------------------------------------
@@ -664,6 +677,8 @@ class App:
             sel = self.sys_opts.selected
             self.sys_cam.target = sc.disp(moon_pos[sel]) if self.sys_follow and sel in moon_pos else (0.0, 0.0, 0.0)
             hits = draw_system(scene, self.sys_cam, sc)
+            cx, cy, rc = sc.disc
+            self.disc = (cx, cy + 1, rc)  # in terminal cells: the scene starts on row 1
             info = (lambda n: self._system_panel(n, pos, moon_pos, orbits)) if panel else None
         else:
             target = to_display(pos[self.opts.selected], self.opts.scale_mode) if self.follow else (0.0, 0.0, 0.0)
@@ -921,7 +936,7 @@ class App:
                 ("Radius", f"{moon.radius_km:,.1f} km"),
             ]
         c = self._panel_frame(rows, moon.name if moon else f"{planet.name} system", (moon or planet).color,
-                              self.sys_follow and moon is not None)
+                              self.sys_follow)
         y = self._panel_lines(c, lines, rows)
         if moons:
             y = self._events_rows(c, y, rows, moon.key if moon else None)

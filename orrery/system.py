@@ -62,6 +62,7 @@ class SystemScene:
     sun_dir: Vec3  # unit vector from the planet towards the Sun
     opts: SceneOptions = field(default_factory=SceneOptions)
     sun_dist_au: float = 1e9  # shapes the shadow cone; the default is effectively a cylinder
+    disc: tuple[float, float, float] | None = None  # set by draw_system: planet centre (col, row), radius (cols)
 
     def __post_init__(self) -> None:
         self.reach_km = system_reach_km(self.planet, self.moons)
@@ -128,11 +129,13 @@ def draw_system(canvas: Canvas, cam: Camera, sc: SystemScene) -> dict[str, tuple
         return (e1[0] * c + e2[0] * s, e1[1] * c + e2[1] * s, e1[2] * c + e2[2] * s)
 
     if sc.opts.show_grid:
-        _draw_rings(canvas, proj, sc, (e1, e2), plane_point, hidden)
-        ends = [proj(tuple(k * r_disp * x for x in pole)) for k in (-1.6, 1.6)]
-        canvas.line(*ends, GRID, hidden)
-        nx, ny, _ = ends[1]
-        if canvas.free(int(nx) // 2, int(ny) // 4):
+        _draw_rings(canvas, proj, sc, (e1, e2), plane_point, hidden, pcd)
+        # The pole axis: its far end, where it pokes out behind the planet, is hidden like the rings.
+        axis_len = 1.6 * r_disp
+        ends = [proj(tuple(k * x for x in pole)) for k in (-axis_len, axis_len)]
+        canvas.line(*ends, GRID, _behind(hidden, pcd, axis_len))
+        nx, ny, nd = ends[1]
+        if nd >= pcd - BEHIND_MARGIN * axis_len and canvas.free(int(nx) // 2, int(ny) // 4):
             canvas.text(int(nx) // 2, int(ny) // 4, "N", GRID_LABEL, depth=BACKDROP)
 
     if sc.opts.show_orbits:
@@ -180,15 +183,31 @@ def draw_system(canvas: Canvas, cam: Camera, sc: SystemScene) -> dict[str, tuple
                 _draw_label(canvas, moon, sx, sy, moon.key == sc.opts.selected)
 
     _draw_sun_marker(canvas, proj, sc.sun_dir, sc.opts.ascii)
+    sc.disc = (pcx / 2, pcy / 4, r_px / 2)  # centre (col, row) and radius in columns, for picking
     hits = {sc.planet.key: (int(pcx) // 2, int(pcy) // 4)}
     hits.update({moon.key: (int(sx) // 2, int(sy) // 4) for (sx, sy, depth), _, _, moon in items
                  if not hidden(sx, sy, depth)})
     return hits
 
 
-def _draw_rings(canvas: Canvas, proj: Projector, sc: SystemScene, plane, plane_point, hidden) -> None:
+BEHIND_MARGIN = 0.15  # grid lines hide this far (× their own size) behind the planet's centre
+
+
+def _behind(hidden, pcd: float, size: float):
+    """`hidden`, extended to any grid point farther away than the planet's centre.
+
+    The grid is only a reference: the parts of it that wrap round behind the planet just add
+    clutter. The margin keeps a ring seen nearly face-on (no real "behind") whole.
+    """
+    cutoff = pcd - BEHIND_MARGIN * size
+    return lambda x, y, d: d < cutoff or hidden(x, y, d)
+
+
+def _draw_rings(canvas: Canvas, proj: Projector, sc: SystemScene, plane, plane_point, hidden, pcd: float) -> None:
     reach = system_reach_km(sc.planet, sc.moons)
     last = sc.scale(sc.planet.radius_km)
+    # Label each ring near its point nearest the viewer, which is never among the hidden parts.
+    front = max((math.tau * k / 32 for k in range(32)), key=lambda a: proj(plane_point(1.0, a))[2])
     for km in (m * 10**k for k in range(3, 9) for m in (1, 2, 5)):
         if km < 1.5 * sc.planet.radius_km or km > reach * 1.05:
             continue
@@ -196,9 +215,9 @@ def _draw_rings(canvas: Canvas, proj: Projector, sc: SystemScene, plane, plane_p
         if r - last < MIN_RING_GAP:
             continue
         last = r
-        canvas.polyline(proj.many(_ring(*plane, r)), GRID, hidden)
+        canvas.polyline(proj.many(_ring(*plane, r)), GRID, _behind(hidden, pcd, r))
         label = f"{km / 1e6:g}M km" if km >= 1e6 else f"{km / 1e3:g}k km"
-        lx, ly, _ = proj(plane_point(r, -0.35))
+        lx, ly, _ = proj(plane_point(r, front - 0.35))
         col, row = int(lx) // 2 + 1, int(ly) // 4
         if 0 <= row < canvas.rows and all(
             canvas.cells[row][c] is None for c in range(col - 1, col + len(label) + 1) if 0 <= c < canvas.cols

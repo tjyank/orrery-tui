@@ -51,7 +51,7 @@ On macOS/Linux, use `.venv/bin/...`. It needs Python 3.10+ and a truecolor termi
 
 ### Mouse
 
-Drag to rotate and tilt, scroll to zoom, and click a body to select it. Double-click a planet to open its moons; in the moon view, double-click a moon to follow it. Right-click backs out of the moon view or the jump menu. Pass `--no-mouse` to keep your terminal's text selection instead.
+Drag to rotate and tilt, scroll to zoom, and click a body to select it. Double-click a planet to open its moons, or any other body to follow it. In the moon view, click anywhere on the planet to show its details again, and double-click a moon or the planet to follow it. Right-click backs out of the moon view or the jump menu. Pass `--no-mouse` to keep your terminal's text selection instead.
 
 ### Jumping in time
 

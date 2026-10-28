@@ -163,6 +163,58 @@ def test_orbit_in_front_of_planet_is_cut_out_of_it():
         assert planet_shade(crossed.dot_fg[r][k]) and crossed.dot_fg[r][k] not in orbit_colours
 
 
+def test_grid_hides_what_wraps_behind_the_planet():
+    # From above (the default pitch), a ring's far half projects above the planet's centre on
+    # screen. Those parts are hidden; seen face-on (from the pole), rings have no back and stay whole.
+    from orrery.render import GRID
+    from orrery.system import SystemScene, draw_system
+
+    moons = offline_moon_snapshot("jupiter", JD)
+    pos = {k: o.position(JD) for k, o in moons.orbits.items()}
+
+    def grid_dots(pitch_deg: float) -> tuple[int, int]:
+        sc = SystemScene(BY_KEY["jupiter"], MOONS_OF["jupiter"], pos, moons.orbits, (1.0, 0.0, 0.0))
+        sc.opts.show_orbits = sc.opts.show_drops = sc.opts.show_labels = False
+        cam = Camera()
+        cam.pitch = math.radians(pitch_deg)
+        c = Canvas(100, 30)
+        draw_system(c, cam, sc)
+        centre_row = int(sc.disc[1])
+        cells = [(r, k) for r in range(c.rows) for k in range(c.cols) if c.bits[r][k] and c.dot_fg[r][k] == GRID]
+        return sum(r < centre_row - 2 for r, _ in cells), len(cells)
+
+    above, total = grid_dots(35)
+    assert total > 100 and above < 0.05 * total  # only the front arcs (and the pole axis) remain
+    above, total = grid_dots(90)
+    assert above > 0.3 * total  # face-on: whole rings
+
+
+def test_clicks_pick_the_planet_disc_and_double_clicks_follow():
+    import argparse
+    from orrery.app import App
+    from orrery.terminal import Mouse
+
+    args = argparse.Namespace(offline=True, scale=None, date=None, ascii=False, once=True, size=None,
+                              system="jupiter", fresh=True, no_mouse=False)
+    app = App(args)
+    app.frame(140, 40)
+
+    def click(col, row):
+        app.handle(Mouse("press", 0, col, row))
+        app.handle(Mouse("drag", 0, col, row))  # a motion report within the cell is not a drag
+        app.handle(Mouse("release", 0, col, row))
+
+    col, row = app.hits["io"]
+    click(col, row)
+    click(col, row)
+    assert app.sys_opts.selected == "io" and app.sys_follow
+    app.frame(140, 40)
+    cx, cy, rc = app.disc
+    app.last_click = None
+    click(int(cx + 0.7 * rc), int(cy))  # off-centre, but on the disc
+    assert app.sys_opts.selected == "jupiter"
+
+
 def test_render_returns_hits_and_hides_small_bodies():
     snap = offline_snapshot(JD)
     pos = {"sun": (0.0, 0.0, 0.0), **{k: o.position(JD) for k, o in snap.orbits.items()}}
