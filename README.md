@@ -87,9 +87,9 @@ Moon positions are fetched from Horizons for the system you open. They are cache
 - **`orrery/kepler.py`**: converts state vectors to osculating elements and propagates them two-body style.
 - **`orrery/bodies.py`**: body catalogue and JPL's *Keplerian Elements for Approximate Positions*, which serve as the offline fallback.
 - **`orrery/render.py`**: orthographic camera projecting onto a braille-dot canvas. Each terminal cell is 2×4 dots, which gives roughly square pixels. Orbit segments behind the Sun's plane of view are drawn dimmer, and drop lines from each planet to the ecliptic show inclination.
-- **`orrery/terminal.py`**: raw ANSI output plus non-blocking keys and SGR mouse reports (`msvcrt` on Windows, `termios` elsewhere). It has no curses dependency. Each frame only rewrites the terminal rows that changed.
+- **`orrery/terminal.py`**: raw ANSI output plus non-blocking keys and SGR mouse reports.
 - **`orrery/moons.py`**, **`orrery/system.py`**: the moon catalogue and the planet-centred view.
-- **`orrery/lunar.py`**: the analytic Moon, and Earth's centre (the Earth–Moon barycentre minus the Moon's pull).
+- **`orrery/lunar.py`**: the analytic Moon, and Earth's centre.
 - **`orrery/events.py`**: event search. Each event is a window where a smooth separation function dips below zero (say, a moon's distance from the shadow axis minus the shadow's radius). It's sampled finely enough for the shortest event, dips between samples are refined, and contacts are bisected. Shadows are true umbral cones, with Earth's enlarged 2% for its atmosphere.
 - **`orrery/jumps.py`**, **`orrery/settings.py`**: date parsing and presets; saved settings.
 
