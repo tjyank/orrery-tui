@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from functools import cached_property, lru_cache
 
 GM_SUN = 2.9591220828559115e-04  # au^3 / day^2 (Gaussian constant squared)
 AU_KM = 149_597_870.7
@@ -57,14 +58,18 @@ class Orbit:
     def period_days(self) -> float:
         return math.tau / self.mean_motion
 
-    def _rotate(self, xp: float, yp: float) -> Vec3:
+    @cached_property
+    def _basis(self) -> tuple[Vec3, Vec3]:
+        """Unit vectors towards periapsis (P) and 90° ahead of it in the orbit plane (Q)."""
         cO, sO = math.cos(self.node), math.sin(self.node)
         cw, sw = math.cos(self.argp), math.sin(self.argp)
         ci, si = math.cos(self.i), math.sin(self.i)
-        x = (cO * cw - sO * sw * ci) * xp + (-cO * sw - sO * cw * ci) * yp
-        y = (sO * cw + cO * sw * ci) * xp + (-sO * sw + cO * cw * ci) * yp
-        z = (sw * si) * xp + (cw * si) * yp
-        return (x, y, z)
+        return ((cO * cw - sO * sw * ci, sO * cw + cO * sw * ci, sw * si),
+                (-cO * sw - sO * cw * ci, -sO * sw + cO * cw * ci, cw * si))
+
+    def _rotate(self, xp: float, yp: float) -> Vec3:
+        (px, py, pz), (qx, qy, qz) = self._basis
+        return (px * xp + qx * yp, py * xp + qy * yp, pz * xp + qz * yp)
 
     def _perifocal(self, ecc_anom: float) -> tuple[float, float]:
         return (
@@ -86,11 +91,14 @@ class Orbit:
         vyp = self.a * math.sqrt(1 - self.e**2) * math.cos(ecc) * edot
         return self._rotate(xp, yp), self._rotate(vxp, vyp)
 
-    def path(self, samples: int = 180) -> list[Vec3]:
-        """Closed polyline of the orbit, sampled uniformly in eccentric anomaly."""
-        return [
-            self._rotate(*self._perifocal(math.tau * k / samples)) for k in range(samples + 1)
-        ]
+    def path(self, samples: int = 180) -> tuple[Vec3, ...]:
+        """Closed polyline of the orbit, sampled uniformly in eccentric anomaly (cached; don't mutate)."""
+        return _path(self, samples)
+
+
+@lru_cache(maxsize=512)
+def _path(orbit: Orbit, samples: int) -> tuple[Vec3, ...]:
+    return tuple(orbit._rotate(*orbit._perifocal(math.tau * k / samples)) for k in range(samples + 1))
 
 
 def orbit_from_state(r: Vec3, v: Vec3, epoch: float, mu: float = GM_SUN) -> Orbit:

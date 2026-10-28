@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from .kepler import GM_SUN, Orbit
 
 RGB = tuple[int, int, int]
+GM_PLANETS_RATIO = 0.00134  # mass of the planets / mass of the Sun: barycentric orbits feel both
 
 
 @dataclass(frozen=True)
@@ -22,13 +23,29 @@ class Body:
     elements: tuple[float, ...] = ()
     rates: tuple[float, ...] = ()
     pole: tuple[float, float] = (0.0, 90.0)  # IAU north pole (RA, Dec) in degrees, ICRF
+    kind: str = "planet"  # star | planet | dwarf | asteroid | comet
+    # Horizons centre for this body's orbit: the Sun ("10"), or the solar-system barycentre ("0")
+    # for slow outer orbits, whose heliocentric elements wobble with Jupiter's pull on the Sun.
+    center: str = "10"
 
     @property
     def mu(self) -> float:
+        if self.center == "0":
+            return GM_SUN * (1 + GM_PLANETS_RATIO)
         return GM_SUN * (1 + self.mass_ratio)
 
+    @property
+    def small(self) -> bool:
+        """Drawn only when small bodies are switched on (Pluto stays a fixture of the planet set)."""
+        return self.kind in ("asteroid", "comet") or (self.kind == "dwarf" and self.key != "pluto")
 
-SUN = Body("sun", "Sun", "10", (255, 214, 92), 695_700, 1.0, pole=(286.13, 63.87))
+    @property
+    def type_name(self) -> str:
+        return {"star": "Star", "planet": "Planet", "dwarf": "Dwarf planet", "asteroid": "Asteroid",
+                "comet": "Comet"}[self.kind]
+
+
+SUN = Body("sun", "Sun", "10", (255, 214, 92), 695_700, 1.0, pole=(286.13, 63.87), kind="star")
 
 PLANETS: list[Body] = [
     Body("mercury", "Mercury", "199", (176, 168, 160), 2_439.7, 1.6601e-7,
@@ -66,10 +83,39 @@ PLANETS: list[Body] = [
     Body("pluto", "Pluto", "999", (210, 180, 160), 1_188.3, 6.58e-9,
          (39.48211675, 0.24882730, 17.14001206, 238.92903833, 224.06891629, 110.30393684),
          (-0.00031596, 0.00005170, 0.00004818, 145.20780515, -0.04062942, -0.01183482),
-         pole=(132.99, -6.16)),
+         pole=(132.99, -6.16), kind="dwarf"),
 ]
 
-ALL_BODIES: list[Body] = [SUN, *PLANETS]
+
+def _small(key, name, hid, color, radius, kind, elements, l_rate, center="10") -> Body:
+    """Small bodies: osculating elements fitted to JPL Horizons at 2026-01-01, in the same
+    (a, e, I, L, long.peri, long.node) form as the planets, advancing only the mean longitude."""
+    return Body(key, name, hid, color, radius, 0.0, elements, (0, 0, 0, l_rate, 0, 0), kind=kind, center=center)
+
+
+SMALL_BODIES: list[Body] = [
+    _small("ceres", "Ceres", "1;", (180, 170, 160), 469.7, "dwarf",
+           (2.76555733, 0.07960223, 10.587946, 158.740169, 153.555937, 80.249109), 7827.449977),
+    _small("pallas", "Pallas", "2;", (160, 165, 175), 256.0, "asteroid",
+           (2.76987522, 0.23065363, 34.929259, 113.735400, 123.827302, 172.887811), 7809.154083),
+    _small("vesta", "Vesta", "4;", (200, 190, 170), 262.7, "asteroid",
+           (2.36154565, 0.09017811, 7.144046, 234.052992, 255.230913, 103.702272), 9919.728361),
+    _small("haumea", "Haumea", "136108;", (220, 220, 230), 780.0, "dwarf",
+           (43.10245827, 0.19502458, 28.204825, 192.320842, 1.893529, 121.946447), 127.301060, "0"),
+    _small("makemake", "Makemake", "136472;", (210, 150, 120), 715.0, "dwarf",
+           (45.49869444, 0.16038650, 29.002080, 155.617099, 15.506940, 79.441468), 117.377993, "0"),
+    _small("eris", "Eris", "136199;", (230, 230, 235), 1_163.0, "dwarf",
+           (67.83516192, 0.43843001, 43.992966, 21.040901, 187.197567, 35.976476), 64.476697, "0"),
+    _small("halley", "Halley", "DES=1P;CAP;", (150, 220, 255), 5.5, "comet",
+           (17.86506860, 0.96730265, 162.245813, 236.855577, 170.569592, 58.835071), 477.065542, "0"),
+    _small("encke", "Encke", "DES=2P;CAP;", (150, 240, 220), 2.4, "comet",
+           (2.21800836, 0.84723149, 11.346621, 86.887148, 161.297581, 334.016764), 10898.068453),
+    _small("67p", "67P/C-G", "DES=67P;CAP;", (170, 200, 255), 2.0, "comet",
+           (3.45876054, 0.64969881, 3.867254, 276.373876, 58.530214, 36.304545), 5596.461940),
+]
+
+ORBITING: list[Body] = [*PLANETS, *SMALL_BODIES]  # everything with a heliocentric orbit
+ALL_BODIES: list[Body] = [SUN, *ORBITING]
 BY_KEY = {b.key: b for b in ALL_BODIES}
 
 J2000 = 2451545.0

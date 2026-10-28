@@ -9,10 +9,10 @@ import urllib.parse
 import urllib.request
 import urllib.error
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .bodies import BY_KEY, PLANETS, approximate_orbit
+from .bodies import BY_KEY, ORBITING, approximate_orbit
 from .kepler import Orbit, orbit_from_state
 from .moons import MOONS_OF, mean_moon_orbit
 
@@ -34,8 +34,12 @@ def jd_now() -> float:
     return time.time() / 86400.0 + 2440587.5
 
 
+_UNIX_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
 def jd_to_datetime(jd: float) -> datetime:
-    return datetime.fromtimestamp((jd - 2440587.5) * 86400.0, tz=timezone.utc)
+    # Not datetime.fromtimestamp: on Windows that rejects dates before 1970.
+    return _UNIX_EPOCH + timedelta(days=jd - 2440587.5)
 
 
 @dataclass
@@ -52,6 +56,7 @@ class Snapshot:
             "live": "LIVE  JPL Horizons",
             "cache": "CACHED JPL Horizons",
             "offline": "OFFLINE Kepler model",
+            "analytic": "ANALYTIC lunar theory (ELP/Meeus)",
         }[self.source]
 
 
@@ -98,13 +103,31 @@ def _fetch_state(horizons_id: str, name: str, jd: float, timeout: float, center:
 def fetch_horizons(jd: float, timeout: float = 20.0, progress=None) -> Snapshot:
     # Sequential on purpose: Horizons rejects concurrent requests from one client with 503s.
     states = {}
-    for n, body in enumerate(PLANETS):
+    for n, body in enumerate(ORBITING):
         if progress:
-            progress(n, len(PLANETS))
-        states[body.key] = _fetch_state(body.horizons_id, body.name, jd, timeout)
+            progress(n, len(ORBITING))
+        try:
+            states[body.key] = _fetch_state(body.horizons_id, body.name, jd, timeout, body.center)
+        except Exception:
+            if not body.small:
+                raise
+            # A small body Horizons can't resolve shouldn't sink the planets: the offline orbit fills in.
     _save_cache(jd, states)
-    orbits = {b.key: orbit_from_state(*states[b.key], epoch=jd, mu=b.mu) for b in PLANETS}
-    return Snapshot(orbits, jd, "live")
+    return Snapshot(_orbits_from_states(states, jd), jd, "live")
+
+
+def _orbits_from_states(states: dict, epoch: float) -> dict[str, Orbit]:
+    """Osculating orbits for every body; any body without a usable state gets its offline orbit."""
+    orbits = {}
+    for b in ORBITING:
+        try:
+            r, v = states[b.key]
+            orbits[b.key] = orbit_from_state(tuple(r), tuple(v), epoch, b.mu)
+        except (KeyError, ValueError, TypeError):
+            if not b.small:
+                raise KeyError(b.key)
+            orbits[b.key] = approximate_orbit(b, epoch)
+    return orbits
 
 
 def _save_cache(jd: float, states: dict) -> None:
@@ -121,10 +144,7 @@ def load_cache(jd: float) -> Snapshot | None:
         epoch = float(data["epoch"])
         if abs(jd - epoch) > CACHE_MAX_AGE_DAYS:
             return None
-        orbits = {
-            b.key: orbit_from_state(tuple(data["states"][b.key][0]), tuple(data["states"][b.key][1]), epoch, b.mu)
-            for b in PLANETS
-        }
+        orbits = _orbits_from_states(data["states"], epoch)
         mtime = datetime.fromtimestamp(CACHE_FILE.stat().st_mtime, tz=timezone.utc)
         return Snapshot(orbits, epoch, "cache", fetched_at=mtime)
     except (OSError, ValueError, KeyError, TypeError):
@@ -132,7 +152,7 @@ def load_cache(jd: float) -> Snapshot | None:
 
 
 def offline_snapshot(jd: float) -> Snapshot:
-    return Snapshot({b.key: approximate_orbit(b, jd) for b in PLANETS}, jd, "offline")
+    return Snapshot({b.key: approximate_orbit(b, jd) for b in ORBITING}, jd, "offline")
 
 
 def best_snapshot(jd: float, allow_network: bool = True, progress=None) -> Snapshot:
