@@ -308,7 +308,9 @@ class App:
             done, total = service.progress
             status += f"  ↻ fetching {done}/{total}" if total else "  ↻ fetching…"
         cam, opts = self.active_cam, self.active_opts
-        view = f"yaw {math.degrees(cam.yaw):3.0f}° pitch {math.degrees(cam.pitch):3.0f}° zoom {cam.zoom:.2f}× {opts.scale_mode}"
+        # Round to int before formatting: a float like -1e-15 would otherwise print as "-0".
+        yaw, pitch = round(math.degrees(cam.yaw)) % 360, round(math.degrees(cam.pitch))
+        view = f"yaw {yaw:3d}° pitch {pitch:3d}° zoom {cam.zoom:.2f}× {opts.scale_mode}"
         c.text(1, 0, "ORRERY", ACCENT, bold=True)
         x = 8
         if self.system:
