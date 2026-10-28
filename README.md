@@ -28,6 +28,7 @@ On macOS/Linux, use `.venv/bin/...`. It needs Python 3.10+ and a truecolor termi
 | `--offline` | never touch the network. It uses the last cached fetch (if under 45 days old), otherwise the analytic model |
 | `--ascii` | ASCII glyphs for bodies, for terminals with poor Unicode fonts |
 | `--once --size 140x40` | print a single frame and exit (handy for screenshots and CI) |
+| `--system jupiter` | start in a planet's moon system view |
 
 ## Keys
 
@@ -47,7 +48,24 @@ On macOS/Linux, use `.venv/bin/...`. It needs Python 3.10+ and a truecolor termi
 | `a` | auto-spin the camera |
 | `p` | toggle the info panel (shown when the terminal is ≥100 columns) |
 | `r` | refetch from JPL Horizons now |
+| `Enter` / `v` | open the selected planet's moon system view |
 | `q` / `Esc` | quit |
+
+### Moon system view
+
+Opening a planet with `Enter` shows it at the centre, lit from the Sun's direction, with its moons on their real orbits. The rings mark distances in the planet's equatorial plane, the `N` axis is its north pole, and the ☼ marker at the edge points to the Sun. Moons in the planet's shadow are drawn dimmed. Rotate, tilt, zoom, time and the `g o d n a i p` toggles work as in the main view; the camera is kept separate from the main one.
+
+| Key | Action |
+|---|---|
+| `Tab` / `Shift-Tab` | cycle the planet and its moons (shown in the info panel) |
+| `[` `]` | previous or next planet's system |
+| `f` | follow the selected moon |
+| `m` | cycle the distance scale: log (default, keeps inner moons clear of the disc) → sqrt → linear (to scale) |
+| `Esc` / `Enter` / `v` | back to the solar system |
+
+Covered: the Moon; Phobos and Deimos; Amalthea and the four Galilean moons; Saturn's nine major moons from Mimas to Phoebe; Uranus's five major moons; Proteus, Triton and Nereid; and Charon, Styx, Nix, Kerberos and Hydra. Mercury and Venus have none.
+
+Moon positions are fetched from Horizons for the system you open: planetocentric state vectors, with Pluto's small moons taken around the Pluto–Charon barycentre. They are cached in `~/.cache/orrery/horizons-moons.json` for 5 days and re-fetched once simulated time drifts 2 days from the data epoch, because moon orbits are perturbed much faster than planetary ones. Offline, the app uses built-in elements fitted to Horizons at 2026-01-01. Those are good to a few degrees of orbital phase near the present, but they don't model nodal precession.
 
 ## How it works
 
