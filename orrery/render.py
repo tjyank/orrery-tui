@@ -58,13 +58,21 @@ class Camera:
 class Projector:
     """Precomputes the camera basis for one frame."""
 
-    def __init__(self, cam: Camera, width_px: int, height_px: int):
+    def __init__(self, cam: Camera, width_px: int, height_px: int,
+                 extent: tuple[float, float] = (VIEW_EXTENT, VIEW_EXTENT * math.sin(ISO_PITCH))):
+        """`extent`: half-width and half-height, in display units, that fill the view at zoom 1."""
         self.cy, self.sy = math.cos(cam.yaw), math.sin(cam.yaw)
         self.cp, self.sp = math.cos(cam.pitch), math.sin(cam.pitch)
         self.target = cam.target
         self.ox, self.oy = width_px / 2, height_px / 2
-        fit = min(width_px / 2, (height_px / 2) / math.sin(ISO_PITCH)) / VIEW_EXTENT
+        fit = min((width_px / 2) / extent[0], (height_px / 2) / extent[1])
         self.scale = fit * cam.zoom
+
+    def direction(self, v: Vec3) -> Vec3:
+        """Rotate a direction into camera space: (right, up, toward viewer)."""
+        x1 = v[0] * self.cy + v[1] * self.sy
+        y1 = -v[0] * self.sy + v[1] * self.cy
+        return x1, y1 * self.sp + v[2] * self.cp, -y1 * self.cp + v[2] * self.sp
 
     def __call__(self, p: Vec3) -> tuple[float, float, float]:
         """Display-space point -> (pixel x, pixel y, depth); larger depth = nearer the viewer."""
@@ -104,14 +112,17 @@ class Canvas:
             self.dot_depth[row][col] = depth
             self.dot_fg[row][col] = color
 
-    def line(self, a: tuple[float, float, float], b: tuple[float, float, float], color: RGB) -> None:
+    def line(self, a: tuple[float, float, float], b: tuple[float, float, float], color: RGB, hidden=None) -> None:
+        """Draw a 3D-projected segment; `hidden(x, y, depth)` may veto individual dots."""
         (x0, y0, d0), (x1, y1, d1) = a, b
         if (max(x0, x1) < 0 or min(x0, x1) >= self.width or max(y0, y1) < 0 or min(y0, y1) >= self.height):
             return
         steps = int(min(max(abs(x1 - x0), abs(y1 - y0)), 4 * (self.width + self.height))) + 1
         for k in range(steps + 1):
             t = k / steps
-            self.dot(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, color, d0 + (d1 - d0) * t)
+            x, y, d = x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, d0 + (d1 - d0) * t
+            if hidden is None or not hidden(x, y, d):
+                self.dot(x, y, color, d)
 
     def free(self, col: int, row: int) -> bool:
         return 0 <= col < self.cols and 0 <= row < self.rows and self.cell_depth[row][col] <= BACKDROP
@@ -263,7 +274,7 @@ def _draw_body(canvas: Canvas, body: Body, sx: float, sy: float, depth: float, s
                 canvas.put(col + dc, row, Cell(ch, (255, 255, 255), bold=True), depth + 1e6)
 
 
-def _draw_label(canvas: Canvas, body: Body, sx: float, sy: float, selected: bool) -> None:
+def _draw_label(canvas: Canvas, body, sx: float, sy: float, selected: bool) -> None:
     col, row = int(sx) // 2, int(sy) // 4
     name = f" {body.name} " if selected else body.name
     pad = 3 if selected else 2
