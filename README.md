@@ -39,11 +39,11 @@ On macOS/Linux, use `.venv/bin/...`. It needs Python 3.10+ and a truecolor termi
 | `space` | pause or resume time |
 | `t` | jump back to present, at real time |
 | `m` | cycle the distance scale: log → sqrt → linear |
-| `o` | cycle the orbits: all → only the selected body's (the one you're following) → none |
+| `o` | cycle the orbits: all → only the selected body's → none |
 | `d` `n` | toggle drop lines to the ecliptic, and names |
 | `a` | auto-spin the camera |
 | `p` | toggle the info panel |
-| `?` | show or hide the key legend (keys keep working while it's open; `Esc` or a click closes it) |
+| `?` | show or hide the key legend |
 | `r` | refetch from JPL Horizons |
 | `Enter` / `v` | open the selected planet's moon system view |
 | `J` | jump menu: a typed date or offset, or a preset moment |
