@@ -229,6 +229,7 @@ class Canvas:
 class SceneOptions:
     scale_mode: str = "log"
     show_orbits: bool = True
+    solo_orbit: bool = False  # with show_orbits: only the selected (followed) body's orbit
     show_drops: bool = True
     show_labels: bool = True
     show_small: bool = True  # dwarf planets, asteroids and comets
@@ -255,7 +256,7 @@ def draw_scene(canvas: Canvas, cam: Camera, scene: Scene) -> dict[str, tuple[int
     if scene.opts.show_orbits:
         for body in bodies[1:]:
             orbit = scene.orbits.get(body.key)
-            if orbit is None:
+            if orbit is None or (scene.opts.solo_orbit and body.key != scene.opts.selected):
                 continue
             if body.key == scene.opts.selected:
                 k_front, k_back = 0.75, 0.38
@@ -287,8 +288,8 @@ def draw_scene(canvas: Canvas, cam: Camera, scene: Scene) -> dict[str, tuple[int
 
     if scene.opts.show_labels:
         for (sx, sy, _), _, body in reversed(items):  # nearest bodies claim label space first
-            if body is SUN:  # label beside the disc, not on top of it
-                sx += max(0.0, sun_radius_px(proj.scale) - 2)
+            if body is SUN and sun_radius_px(proj.scale) >= SUN_GLYPH_PX:  # beside the disc, not on it
+                sx += sun_radius_px(proj.scale) - 2
             _draw_label(canvas, body, sx, sy, body.key == scene.opts.selected)
     return {body.key: (int(sx) // 2, int(sy) // 4) for (sx, sy, _), _, body in items}
 
@@ -315,8 +316,9 @@ def _draw_tail(canvas: Canvas, proj: Projector, body: Body, p_au: Vec3 | None, d
 
 
 SUN_MIN_PX, SUN_MAX_PX = 1.5, 14.0  # the Sun's drawn radius in dots: decorative, not to scale
-SUN_GLYPH_PX = 3.0  # below this radius the disc is too small to read as a sun, so ☼ marks it
+SUN_GLYPH_PX = 4.5  # below this radius a braille disc looks like a block, so ☼ marks the Sun instead
 SUN_CORE, SUN_EDGE = (255, 248, 215), (255, 165, 45)
+SUN_CLEAR_PX = 2.0  # orbit dots are cleared this far beyond the Sun's limb, keeping it round
 
 
 def sun_radius_px(scale: float) -> float:
@@ -330,16 +332,31 @@ def _draw_body(canvas: Canvas, body: Body, sx: float, sy: float, depth: float, s
         # A solid disc, white-hot at the centre fading to orange at the limb. (Hollow rings of
         # dots broke apart around the glyph and label once they grew.)
         r = sun_radius_px(scale)
-        reach = math.ceil(r)
-        for yi in range(math.floor(sy) - reach, math.floor(sy) + reach + 1):
-            for xi in range(math.floor(sx) - reach, math.floor(sx) + reach + 1):
+        if r < SUN_GLYPH_PX:  # too small for a round disc: the glyph's cell hides whatever is beneath
+            canvas.put(col, row, Cell("*" if opts.ascii else "☼", (255, 240, 160), bold=True), depth + 1e6)
+            return
+        reach = math.ceil(r + SUN_CLEAR_PX)
+        bits, fgs, depths = canvas.bits, canvas.dot_fg, canvas.dot_depth
+        disc, ring = [], []
+        for yi in range(max(0, math.floor(sy) - reach), min(canvas.height, math.floor(sy) + reach + 1)):
+            for xi in range(max(0, math.floor(sx) - reach), min(canvas.width, math.floor(sx) + reach + 1)):
                 t = math.hypot(xi + 0.5 - sx, yi + 0.5 - sy) / r
                 if t <= 1:
-                    k = t**1.5
-                    color = tuple(int(a + (b - a) * k) for a, b in zip(SUN_CORE, SUN_EDGE))
-                    canvas.dot(xi, yi, color, depth)
-        if r < SUN_GLYPH_PX:
-            canvas.put(col, row, Cell("*" if opts.ascii else "☼", (255, 240, 160), bold=True), depth + 1e6)
+                    disc.append((xi, yi, t))
+                elif t <= 1 + SUN_CLEAR_PX / r:
+                    ring.append((xi, yi))
+        # Orbits seen edge-on run straight through the Sun. Clear them: from every cell the disc
+        # touches (a cell has one colour, so any orbit dot left there would turn Sun-coloured), and
+        # from a thin ring round the limb, so the Sun keeps a clean round outline.
+        for cr, cc in {(yi >> 2, xi >> 1) for xi, yi, _ in disc}:
+            bits[cr][cc] = 0
+        for xi, yi in ring:
+            bits[yi >> 2][xi >> 1] &= ~_BRAILLE[yi & 3][xi & 1]
+        for xi, yi, t in disc:  # white-hot at the centre, fading to orange at the limb
+            cr, cc = yi >> 2, xi >> 1
+            bits[cr][cc] |= _BRAILLE[yi & 3][xi & 1]
+            fgs[cr][cc] = tuple(int(a + (b - a) * t**1.5) for a, b in zip(SUN_CORE, SUN_EDGE))
+            depths[cr][cc] = depth
         return
     if body.kind == "comet":
         glyph = "*" if opts.ascii else "✦"

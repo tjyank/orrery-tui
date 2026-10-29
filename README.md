@@ -39,7 +39,8 @@ On macOS/Linux, use `.venv/bin/...`. It needs Python 3.10+ and a truecolor termi
 | `space` | pause or resume time |
 | `t` | jump back to present, at real time |
 | `m` | cycle the distance scale: log → sqrt → linear |
-| `o` `d` `n` | toggle orbits, drop lines to the ecliptic, and names |
+| `o` | cycle the orbits: all → only the selected body's (the one you're following) → none |
+| `d` `n` | toggle drop lines to the ecliptic, and names |
 | `a` | auto-spin the camera |
 | `p` | toggle the info panel |
 | `?` | show or hide the key legend (keys keep working while it's open; `Esc` or a click closes it) |

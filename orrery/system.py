@@ -126,7 +126,7 @@ def draw_system(canvas: Canvas, cam: Camera, sc: SystemScene) -> dict[str, tuple
     if sc.opts.show_orbits:
         for moon in sc.moons:
             orbit = sc.orbits.get(moon.key)
-            if orbit is None:
+            if orbit is None or (sc.opts.solo_orbit and moon.key != sc.opts.selected):
                 continue
             k_front, k_back = (0.75, 0.38) if moon.key == sc.opts.selected else (0.5, 0.22)
             canvas.polyline(proj.many(sc.orbit_path(orbit)), shade(moon.color, k_front), hidden,
@@ -202,17 +202,25 @@ def _draw_planet(canvas: Canvas, proj: Projector, sc: SystemScene, centre, r_dis
     # Everything drawn so far that falls on the disc is in front of it: whatever was behind was
     # already dropped by `hidden`. So a dot that is already set marks where to cut the planet.
     bits, fgs, depths, w, h = canvas.bits, canvas.dot_fg, canvas.dot_depth, canvas.width, canvas.height
+    planet_bits: dict[tuple[int, int], int] = {}  # per cell: the planet's own dots
     for dx, dy, nz, c in template:
         xi, yi = ix + dx, iy + dy
         if 0 <= xi < w and 0 <= yi < h:
             row, col = yi >> 2, xi >> 1
             bit = _BRAILLE[yi & 3][xi & 1]
+            planet_bits.setdefault((row, col), 0)
             if bits[row][col] & bit:
                 bits[row][col] &= ~bit  # something in front: leave a gap in the planet
                 continue
-            bits[row][col] |= bit
+            planet_bits[(row, col)] |= bit
             depths[row][col] = pcd + nz * r_disp
             fgs[row][col] = c  # the planet's colour wins the cell, gaps and all
+    # The planet's colour now owns these cells, so any other dot left in them (an orbit just past
+    # the limb, say) would be drawn in the planet's colour. Keep only the planet's own dots there.
+    # (A cell whose planet dots were all cut away never took the planet's colour: leave it be.)
+    for (row, col), own in planet_bits.items():
+        if own:
+            bits[row][col] = own
 
 
 @lru_cache(maxsize=32)

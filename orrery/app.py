@@ -74,7 +74,8 @@ KEY_LEGEND = [
         ("J", "jump to a date or event"),
     ]),
     ("Display", [
-        ("o d n", "orbits, drop lines, names"),
+        ("o", "orbits: all, selected, none"),
+        ("d n", "drop lines, names"),
         ("p", "info panel"),
         ("?", "this legend"),
     ]),
@@ -301,10 +302,10 @@ class App:
         c, s, o, so = self.cam, self.sys_cam, self.opts, self.sys_opts
         return {
             "yaw": c.yaw, "pitch": c.pitch, "zoom": c.zoom, "scale": o.scale_mode,
-            "orbits": o.show_orbits, "drops": o.show_drops, "names": o.show_labels, "small": o.show_small,
+            "orbits": o.show_orbits, "solo": o.solo_orbit, "drops": o.show_drops, "names": o.show_labels, "small": o.show_small,
             "selected": o.selected, "panel": self.show_panel, "spin": self.spin, "follow": self.follow,
             "sys_yaw": s.yaw, "sys_pitch": s.pitch, "sys_zoom": s.zoom, "sys_scale": so.scale_mode,
-            "sys_orbits": so.show_orbits, "sys_drops": so.show_drops,
+            "sys_orbits": so.show_orbits, "sys_solo": so.solo_orbit, "sys_drops": so.show_drops,
             "sys_names": so.show_labels,
         }
 
@@ -325,9 +326,9 @@ class App:
             so.scale_mode = d["sys_scale"]
         if d.get("selected") in BY_KEY:
             o.selected = d["selected"]
-        for key, obj, attr in (("orbits", o, "show_orbits"), ("drops", o, "show_drops"),
+        for key, obj, attr in (("orbits", o, "show_orbits"), ("solo", o, "solo_orbit"), ("drops", o, "show_drops"),
                                ("names", o, "show_labels"), ("small", o, "show_small"),
-                               ("sys_orbits", so, "show_orbits"),
+                               ("sys_orbits", so, "show_orbits"), ("sys_solo", so, "solo_orbit"),
                                ("sys_drops", so, "show_drops"), ("sys_names", so, "show_labels"),
                                ("panel", self, "show_panel"), ("spin", self, "spin"), ("follow", self, "follow")):
             if key in d:
@@ -556,8 +557,19 @@ class App:
             self.say(f"Dwarf planets, asteroids and comets {'shown' if self.opts.show_small else 'hidden'}")
         elif key == "m":
             opts.scale_mode = SCALE_ORDER[(SCALE_ORDER.index(opts.scale_mode) + 1) % len(SCALE_ORDER)]
-        elif key == "o":
-            opts.show_orbits = not opts.show_orbits
+        elif key == "o":  # all orbits -> just the selected (followed) body's -> none
+            if not opts.show_orbits:
+                opts.show_orbits, opts.solo_orbit = True, False
+            elif not opts.solo_orbit:
+                opts.solo_orbit = True
+            else:
+                opts.show_orbits = False
+            if not opts.show_orbits:
+                self.say("Orbits hidden")
+            elif opts.solo_orbit:
+                self.say("Selected body's orbit")
+            else:
+                self.say("All orbits shown")
         elif key == "d":
             opts.show_drops = not opts.show_drops
         elif key == "n":

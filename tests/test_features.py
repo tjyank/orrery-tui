@@ -270,3 +270,118 @@ def test_clicking_a_name_selects_its_body():
             clicked += 1
             app.frame(140, 40)
         assert clicked >= 4
+
+
+def test_sun_stays_round_when_orbits_run_through_it_edge_on():
+    # Nearly edge-on, the inner orbits flatten into bands through the Sun. They're cleared from
+    # the disc and a ring round it, so the Sun keeps its own colour and its round outline.
+    from orrery.render import SUN_CLEAR_PX, sun_radius_px
+
+    snap = offline_snapshot(JD)
+    pos = {"sun": (0.0, 0.0, 0.0), **{k: o.position(JD) for k, o in snap.orbits.items()}}
+    cam = Camera()
+    cam.pitch, cam.zoom = math.radians(4), 2.0
+    c = Canvas(116, 40)
+    draw_scene(c, cam, Scene(pos, snap.orbits))
+    sx, sy = c.width / 2, c.height / 2  # the Sun sits at the centre of the view
+    r = sun_radius_px(min(c.width / 2, c.height / 2 / math.sin(math.atan(1 / math.sqrt(2)))) / 6.2 * cam.zoom)
+    for yi in range(c.height):
+        for xi in range(c.width):
+            dist = math.hypot(xi + 0.5 - sx, yi + 0.5 - sy)
+            on = bool(c.bits[yi >> 2][xi >> 1] & (((0x01, 0x08), (0x02, 0x10), (0x04, 0x20), (0x40, 0x80))[yi & 3][xi & 1]))
+            if dist <= r:
+                assert on and c.dot_fg[yi >> 2][xi >> 1][0] == 255  # Sun dots, in the Sun's colours
+            elif dist <= r + SUN_CLEAR_PX:
+                assert not on  # the clear ring round the limb
+
+
+def test_no_stray_sun_coloured_dots_around_the_sun():
+    # A cell has one colour, so an orbit dot left in a cell the Sun's disc touches would turn
+    # Sun-coloured. Every dot in such a cell must be part of the disc itself.
+    from orrery.render import sun_radius_px
+
+    snap = offline_snapshot(JD)
+    pos = {"sun": (0.0, 0.0, 0.0), **{k: o.position(JD) for k, o in snap.orbits.items()}}
+    for zoom in (1.5, 2.0, 4.0):
+        cam = Camera()
+        cam.pitch, cam.zoom = math.radians(5), zoom
+        c = Canvas(116, 40)
+        draw_scene(c, cam, Scene(pos, snap.orbits))
+        sx, sy = c.width / 2, c.height / 2
+        r = sun_radius_px(min(c.width / 2, c.height / 2 / math.sin(math.atan(1 / math.sqrt(2)))) / 6.2 * zoom)
+        braille = ((0x01, 0x08), (0x02, 0x10), (0x04, 0x20), (0x40, 0x80))
+        for yi in range(c.height):
+            for xi in range(c.width):
+                cell_has_sun = any(math.hypot(2 * (xi >> 1) + dx + 0.5 - sx, 4 * (yi >> 2) + dy + 0.5 - sy) <= r
+                                   for dx in (0, 1) for dy in range(4))
+                on = c.bits[yi >> 2][xi >> 1] & braille[yi & 3][xi & 1]
+                if cell_has_sun and on:
+                    assert math.hypot(xi + 0.5 - sx, yi + 0.5 - sy) <= r, (zoom, xi, yi)
+
+
+def test_planet_colour_does_not_bleed_into_orbits():
+    # Every dot drawn in the planet's colour must be part of the planet's disc: an orbit dot that
+    # shares a cell with the planet's limb must not take the planet's colour.
+    from orrery.system import SystemScene, draw_system
+
+    braille = ((0x01, 0x08), (0x02, 0x10), (0x04, 0x20), (0x40, 0x80))
+    for planet, yaw, pitch, zoom in (("saturn", 89, -29, 0.76), ("jupiter", 45, 10, 1.0), ("uranus", 0, 20, 1.5)):
+        moons = offline_moon_snapshot(planet, JD)
+        pos = {k: o.position(JD) for k, o in moons.orbits.items()}
+        sc = SystemScene(BY_KEY[planet], MOONS_OF[planet], pos, moons.orbits, (1.0, 0.0, 0.0))
+        sc.opts.show_labels = False
+        cam = Camera()
+        cam.yaw, cam.pitch, cam.zoom = math.radians(yaw), math.radians(pitch), zoom
+        c = Canvas(116, 40)
+        draw_system(c, cam, sc)
+        cx, cy, rc = sc.disc
+        base = BY_KEY[planet].color
+        for row in range(c.rows):
+            for col in range(c.cols):
+                fg = c.dot_fg[row][col]
+                if not c.bits[row][col] or fg is None:
+                    continue
+                k = fg[0] / base[0]
+                if not all(abs(fg[i] - base[i] * k) <= 2 for i in range(3)):
+                    continue  # not the planet's colour
+                for dy in range(4):
+                    for dx in range(2):
+                        if c.bits[row][col] & braille[dy][dx]:
+                            x, y = 2 * col + dx + 0.5, 4 * row + dy + 0.5
+                            assert math.hypot(x - 2 * cx, y - 4 * cy) <= 2 * rc + 0.75, (planet, row, col)
+
+
+def test_o_cycles_all_then_only_the_followed_orbit_then_none():
+    import argparse
+    from orrery.app import App
+
+    app = App(argparse.Namespace(offline=True, scale=None, date=None, ascii=False, once=True, size=None,
+                                 system=None, fresh=True, no_mouse=False))
+    app.opts.selected, app.follow = "mars", True
+    app.opts.show_drops = app.opts.show_labels = False
+
+    def orbit_colours() -> set:
+        c = Canvas(120, 40)
+        snap = app.snapshot
+        pos = {"sun": (0.0, 0.0, 0.0), **{k: o.position(JD) for k, o in snap.orbits.items()}}
+        draw_scene(c, Camera(), Scene(pos, snap.orbits, app.opts))
+        return {c.dot_fg[r][k] for r in range(c.rows) for k in range(c.cols) if c.bits[r][k]}
+
+    from orrery.render import SUN_CORE, shade
+    mars, earth = BY_KEY["mars"].color, BY_KEY["earth"].color
+    assert shade(earth, 0.5) in orbit_colours()  # all orbits
+    app.handle("o")
+    assert app.opts.solo_orbit and app.flash == "Selected body's orbit"
+    seen = orbit_colours()
+    assert shade(mars, 0.75) in seen and shade(earth, 0.5) not in seen  # just the followed one
+    app.handle("o")
+    assert not app.opts.show_orbits
+    seen = orbit_colours()
+    assert shade(mars, 0.75) not in seen
+    app.handle("o")
+    assert app.opts.show_orbits and not app.opts.solo_orbit
+
+    app.enter_system("jupiter")  # same in the moon view, with the selected moon
+    app.sys_opts.selected = "io"
+    app.handle("o")
+    assert app.sys_opts.solo_orbit and app.flash == "Selected body's orbit"

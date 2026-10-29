@@ -19,10 +19,10 @@ def settings_path() -> Path:
 # hand-edited or older settings file can never stop the app from starting.
 SCHEMA: dict[str, type | tuple[type, ...]] = {
     "yaw": (int, float), "pitch": (int, float), "zoom": (int, float),
-    "scale": str, "orbits": bool, "drops": bool, "names": bool, "small": bool,
+    "scale": str, "orbits": bool, "solo": bool, "drops": bool, "names": bool, "small": bool,
     "selected": str, "panel": bool, "spin": bool, "follow": bool,
     "sys_yaw": (int, float), "sys_pitch": (int, float), "sys_zoom": (int, float), "sys_scale": str,
-    "sys_orbits": bool, "sys_drops": bool, "sys_names": bool,
+    "sys_orbits": bool, "sys_solo": bool, "sys_drops": bool, "sys_names": bool,
 }
 
 
