@@ -9,20 +9,28 @@ from .bodies import Body
 from .events import in_umbra
 from .kepler import AU_KM, Orbit, Vec3
 from .moons import Moon, pole_vector
-from .render import _BRAILLE, BACKDROP, GRID, GRID_LABEL, Camera, Canvas, Cell, Projector, SceneOptions, _draw_label, shade
+from .render import _BRAILLE, Camera, Canvas, Cell, Projector, SceneOptions, _draw_label, shade
 
 SYSTEM_EXTENT = 5.5  # display units from the planet to the outermost apoapsis at zoom 1
-MIN_RING_GAP = 0.55  # display units between labelled distance rings
 MAX_CACHED_DISC_PX = 120  # larger planet discs are shaded per frame, clipped to the canvas
+AXIS, AXIS_LABEL = (52, 58, 72), (96, 104, 124)
+AXIS_LENGTH = 1.6  # the pole axis sticks out this far, in planet radii, from the centre
+BEHIND_MARGIN = 0.15  # the axis hides this far (× its length) behind the planet's centre
 
 
-def _norm(v: Vec3) -> Vec3:
-    n = math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
-    return (v[0] / n, v[1] / n, v[2] / n)
+def _draw_pole_axis(canvas: Canvas, proj: Projector, pole: Vec3, r_disp: float, pcd: float, hidden) -> None:
+    """The planet's north-south axis, labelled N at the north end, showing its tilt.
 
-
-def _cross(a: Vec3, b: Vec3) -> Vec3:
-    return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
+    Its far end, where it pokes out behind the planet, is hidden as clutter. The margin keeps the
+    axis whole when seen nearly end-on, where there's no real "behind".
+    """
+    length = AXIS_LENGTH * r_disp
+    ends = [proj(tuple(k * x for x in pole)) for k in (-length, length)]
+    cutoff = pcd - BEHIND_MARGIN * length
+    canvas.line(*ends, AXIS, lambda x, y, d: d < cutoff or hidden(x, y, d))
+    nx, ny, nd = ends[1]
+    if nd >= cutoff and canvas.free(int(nx) // 2, int(ny) // 4):
+        canvas.text(int(nx) // 2, int(ny) // 4, "N", AXIS_LABEL, depth=-math.inf)  # a moon in front covers it
 
 
 def _dot(a: Vec3, b: Vec3) -> float:
@@ -89,15 +97,6 @@ def _disp_path(orbit: Orbit, mode: str, radius_km: float, reach_km: float) -> tu
     return tuple(_disp(p, scale) for p in orbit.path(240))
 
 
-@lru_cache(maxsize=64)
-def _ring(e1: Vec3, e2: Vec3, r: float, n: int = 160) -> tuple[Vec3, ...]:
-    pts = []
-    for k in range(n + 1):
-        c, s = math.cos(math.tau * k / n) * r, math.sin(math.tau * k / n) * r
-        pts.append((e1[0] * c + e2[0] * s, e1[1] * c + e2[1] * s, e1[2] * c + e2[2] * s))
-    return tuple(pts)
-
-
 def _fit_extent(pole: Vec3) -> tuple[float, float]:
     """Screen half-extents of the equatorial disc from the default isometric camera.
 
@@ -112,8 +111,6 @@ def draw_system(canvas: Canvas, cam: Camera, sc: SystemScene) -> dict[str, tuple
     """Draw a planet and its moons; returns the canvas cell of each body shown (for mouse picking)."""
     pole = pole_vector(sc.planet)
     proj = Projector(cam, canvas.width, canvas.height, _fit_extent(pole))
-    e1 = _norm(_cross((0.0, 0.0, 1.0), pole)) if abs(pole[2]) < 0.999 else (1.0, 0.0, 0.0)
-    e2 = _cross(pole, e1)  # (e1, e2) span the planet's equatorial plane
 
     r_disp = sc.scale(sc.planet.radius_km)
     pcx, pcy, pcd = proj((0.0, 0.0, 0.0))
@@ -124,19 +121,7 @@ def draw_system(canvas: Canvas, cam: Camera, sc: SystemScene) -> dict[str, tuple
         rho2 = ((x - pcx) ** 2 + (y - pcy) ** 2) / r_px**2
         return rho2 < 1 and d < pcd + math.sqrt(1 - rho2) * r_disp
 
-    def plane_point(r: float, a: float) -> Vec3:
-        c, s = math.cos(a) * r, math.sin(a) * r
-        return (e1[0] * c + e2[0] * s, e1[1] * c + e2[1] * s, e1[2] * c + e2[2] * s)
-
-    if sc.opts.show_grid:
-        _draw_rings(canvas, proj, sc, (e1, e2), plane_point, hidden, pcd)
-        # The pole axis: its far end, where it pokes out behind the planet, is hidden like the rings.
-        axis_len = 1.6 * r_disp
-        ends = [proj(tuple(k * x for x in pole)) for k in (-axis_len, axis_len)]
-        canvas.line(*ends, GRID, _behind(hidden, pcd, axis_len))
-        nx, ny, nd = ends[1]
-        if nd >= pcd - BEHIND_MARGIN * axis_len and canvas.free(int(nx) // 2, int(ny) // 4):
-            canvas.text(int(nx) // 2, int(ny) // 4, "N", GRID_LABEL, depth=BACKDROP)
+    _draw_pole_axis(canvas, proj, pole, r_disp, pcd, hidden)
 
     if sc.opts.show_orbits:
         for moon in sc.moons:
@@ -188,41 +173,6 @@ def draw_system(canvas: Canvas, cam: Camera, sc: SystemScene) -> dict[str, tuple
     hits.update({moon.key: (int(sx) // 2, int(sy) // 4) for (sx, sy, depth), _, _, moon in items
                  if not hidden(sx, sy, depth)})
     return hits
-
-
-BEHIND_MARGIN = 0.15  # grid lines hide this far (× their own size) behind the planet's centre
-
-
-def _behind(hidden, pcd: float, size: float):
-    """`hidden`, extended to any grid point farther away than the planet's centre.
-
-    The grid is only a reference: the parts of it that wrap round behind the planet just add
-    clutter. The margin keeps a ring seen nearly face-on (no real "behind") whole.
-    """
-    cutoff = pcd - BEHIND_MARGIN * size
-    return lambda x, y, d: d < cutoff or hidden(x, y, d)
-
-
-def _draw_rings(canvas: Canvas, proj: Projector, sc: SystemScene, plane, plane_point, hidden, pcd: float) -> None:
-    reach = system_reach_km(sc.planet, sc.moons)
-    last = sc.scale(sc.planet.radius_km)
-    # Label each ring near its point nearest the viewer, which is never among the hidden parts.
-    front = max((math.tau * k / 32 for k in range(32)), key=lambda a: proj(plane_point(1.0, a))[2])
-    for km in (m * 10**k for k in range(3, 9) for m in (1, 2, 5)):
-        if km < 1.5 * sc.planet.radius_km or km > reach * 1.05:
-            continue
-        r = sc.scale(km)
-        if r - last < MIN_RING_GAP:
-            continue
-        last = r
-        canvas.polyline(proj.many(_ring(*plane, r)), GRID, _behind(hidden, pcd, r))
-        label = f"{km / 1e6:g}M km" if km >= 1e6 else f"{km / 1e3:g}k km"
-        lx, ly, _ = proj(plane_point(r, front - 0.35))
-        col, row = int(lx) // 2 + 1, int(ly) // 4
-        if 0 <= row < canvas.rows and all(
-            canvas.cells[row][c] is None for c in range(col - 1, col + len(label) + 1) if 0 <= c < canvas.cols
-        ):
-            canvas.text(col, row, label, GRID_LABEL, depth=BACKDROP)
 
 
 def _draw_planet(canvas: Canvas, proj: Projector, sc: SystemScene, centre, r_disp: float, r_px: float) -> None:

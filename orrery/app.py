@@ -74,7 +74,7 @@ KEY_LEGEND = [
         ("J", "jump to a date or event"),
     ]),
     ("Display", [
-        ("g o d n", "grid orbits drops names"),
+        ("o d n", "orbits, drop lines, names"),
         ("p", "info panel"),
         ("?", "this legend"),
     ]),
@@ -280,6 +280,7 @@ class App:
         self.n_overlay = 0  # rows at the end of a frame that are painted over the others (the legend)
         # Mouse: what is on screen where (terminal cells), and any drag in progress
         self.hits: dict[str, tuple[int, int]] = {}
+        self.labels: list[tuple[int, int, int, str]] = []  # clickable names: (row, first col, end col, key)
         self.panel_hits: dict[int, str] = {}
         self.menu_hits: dict[int, int] = {}
         self.scene_cols = 0
@@ -299,11 +300,11 @@ class App:
     def settings(self) -> dict:
         c, s, o, so = self.cam, self.sys_cam, self.opts, self.sys_opts
         return {
-            "yaw": c.yaw, "pitch": c.pitch, "zoom": c.zoom, "scale": o.scale_mode, "grid": o.show_grid,
+            "yaw": c.yaw, "pitch": c.pitch, "zoom": c.zoom, "scale": o.scale_mode,
             "orbits": o.show_orbits, "drops": o.show_drops, "names": o.show_labels, "small": o.show_small,
             "selected": o.selected, "panel": self.show_panel, "spin": self.spin, "follow": self.follow,
             "sys_yaw": s.yaw, "sys_pitch": s.pitch, "sys_zoom": s.zoom, "sys_scale": so.scale_mode,
-            "sys_grid": so.show_grid, "sys_orbits": so.show_orbits, "sys_drops": so.show_drops,
+            "sys_orbits": so.show_orbits, "sys_drops": so.show_drops,
             "sys_names": so.show_labels,
         }
 
@@ -324,9 +325,9 @@ class App:
             so.scale_mode = d["sys_scale"]
         if d.get("selected") in BY_KEY:
             o.selected = d["selected"]
-        for key, obj, attr in (("grid", o, "show_grid"), ("orbits", o, "show_orbits"), ("drops", o, "show_drops"),
+        for key, obj, attr in (("orbits", o, "show_orbits"), ("drops", o, "show_drops"),
                                ("names", o, "show_labels"), ("small", o, "show_small"),
-                               ("sys_grid", so, "show_grid"), ("sys_orbits", so, "show_orbits"),
+                               ("sys_orbits", so, "show_orbits"),
                                ("sys_drops", so, "show_drops"), ("sys_names", so, "show_labels"),
                                ("panel", self, "show_panel"), ("spin", self, "spin"), ("follow", self, "follow")):
             if key in d:
@@ -555,8 +556,6 @@ class App:
             self.say(f"Dwarf planets, asteroids and comets {'shown' if self.opts.show_small else 'hidden'}")
         elif key == "m":
             opts.scale_mode = SCALE_ORDER[(SCALE_ORDER.index(opts.scale_mode) + 1) % len(SCALE_ORDER)]
-        elif key == "g":
-            opts.show_grid = not opts.show_grid
         elif key == "o":
             opts.show_orbits = not opts.show_orbits
         elif key == "d":
@@ -638,7 +637,10 @@ class App:
                 self.follow = True
 
     def pick(self, col: int, row: int) -> str | None:
-        """The body drawn at or nearest a clicked cell (within a few cells)."""
+        """The body whose name was clicked, or the body drawn at or nearest the click."""
+        for r, c0, c1, key in self.labels:
+            if row == r and c0 <= col < c1:
+                return key
         best, best_d = None, 3.5
         for key, (c, r) in self.hits.items():
             d = math.hypot(c - col, 2 * (r - row))  # a row is about two columns tall
@@ -686,6 +688,7 @@ class App:
             hits = draw_scene(scene, self.cam, Scene(pos, self.snapshot.orbits, self.opts))
             info = (lambda n: self._panel(n, pos)) if panel else None
         self.hits = {k: (c, r + 1) for k, (c, r) in hits.items()}  # the scene starts on terminal row 1
+        self.labels = [(r + 1, c0, c1, key) for r, c0, c1, key in scene.labels]
 
         if self.menu:
             self._draw_menu(scene)

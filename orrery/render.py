@@ -22,11 +22,8 @@ SCALE_MODES: dict[str, callable] = {
 SCALE_ORDER = ["log", "sqrt", "linear"]
 VIEW_EXTENT = 6.2  # display units visible from centre at zoom 1
 
-GRID_RINGS_AU = (1, 5, 10, 20, 30, 40)
-
 _BRAILLE = ((0x01, 0x08), (0x02, 0x10), (0x04, 0x20), (0x40, 0x80))
 NEG_INF = float("-inf")
-BACKDROP = -1e18  # depth for grid labels: drawn, but anything else may overwrite them
 
 
 def to_display(p: Vec3, mode: str) -> Vec3:
@@ -120,6 +117,7 @@ class Canvas:
         self.dot_depth = [[NEG_INF] * cols for _ in range(rows)]
         self.cells: list[list[Cell | None]] = [[None] * cols for _ in range(rows)]
         self.cell_depth = [[NEG_INF] * cols for _ in range(rows)]
+        self.labels: list[tuple[int, int, int, str]] = []  # name labels drawn: (row, first col, end col, body key)
 
     def dot(self, x: float, y: float, color: RGB, depth: float = 0.0) -> None:
         xi, yi = math.floor(x), math.floor(y)
@@ -179,7 +177,7 @@ class Canvas:
             x0, y0, d0 = x1, y1, d1
 
     def free(self, col: int, row: int) -> bool:
-        return 0 <= col < self.cols and 0 <= row < self.rows and self.cell_depth[row][col] <= BACKDROP
+        return 0 <= col < self.cols and 0 <= row < self.rows and self.cells[row][col] is None
 
     def put(self, col: int, row: int, cell: Cell, depth: float = math.inf) -> None:
         if 0 <= col < self.cols and 0 <= row < self.rows and depth >= self.cell_depth[row][col]:
@@ -231,7 +229,6 @@ class Canvas:
 class SceneOptions:
     scale_mode: str = "log"
     show_orbits: bool = True
-    show_grid: bool = True
     show_drops: bool = True
     show_labels: bool = True
     show_small: bool = True  # dwarf planets, asteroids and comets
@@ -246,10 +243,6 @@ class Scene:
     opts: SceneOptions = field(default_factory=SceneOptions)
 
 
-GRID = (52, 58, 72)
-GRID_LABEL = (96, 104, 124)
-
-
 def draw_scene(canvas: Canvas, cam: Camera, scene: Scene) -> dict[str, tuple[int, int]]:
     """Draw the solar system; returns the canvas cell of each body drawn (for mouse picking)."""
     proj = Projector(cam, canvas.width, canvas.height)
@@ -258,9 +251,6 @@ def draw_scene(canvas: Canvas, cam: Camera, scene: Scene) -> dict[str, tuple[int
     bodies = [b for b in ALL_BODIES
               if (b is SUN or b.key in scene.positions)  # no data, nothing to draw (not a dot on the Sun)
               and (scene.opts.show_small or not b.small or b.key == scene.opts.selected)]
-
-    if scene.opts.show_grid:
-        _draw_grid(canvas, proj, mode)
 
     if scene.opts.show_orbits:
         for body in bodies[1:]:
@@ -297,6 +287,8 @@ def draw_scene(canvas: Canvas, cam: Camera, scene: Scene) -> dict[str, tuple[int
 
     if scene.opts.show_labels:
         for (sx, sy, _), _, body in reversed(items):  # nearest bodies claim label space first
+            if body is SUN:  # label beside the disc, not on top of it
+                sx += max(0.0, sun_radius_px(proj.scale) - 2)
             _draw_label(canvas, body, sx, sy, body.key == scene.opts.selected)
     return {body.key: (int(sx) // 2, int(sy) // 4) for (sx, sy, _), _, body in items}
 
@@ -322,39 +314,32 @@ def _draw_tail(canvas: Canvas, proj: Projector, body: Body, p_au: Vec3 | None, d
         canvas.line(a, b, shade(body.color, 0.8 * (1 - k / segments)))
 
 
-@lru_cache(maxsize=64)
-def _unit_circle(r: float, n: int = 160) -> tuple[Vec3, ...]:
-    return tuple((r * math.cos(math.tau * k / n), r * math.sin(math.tau * k / n), 0.0) for k in range(n + 1))
+SUN_MIN_PX, SUN_MAX_PX = 1.5, 14.0  # the Sun's drawn radius in dots: decorative, not to scale
+SUN_GLYPH_PX = 3.0  # below this radius the disc is too small to read as a sun, so ☼ marks it
+SUN_CORE, SUN_EDGE = (255, 248, 215), (255, 165, 45)
 
 
-def _draw_grid(canvas: Canvas, proj: Projector, mode: str) -> None:
-    for r_au in GRID_RINGS_AU:
-        rd = SCALE_MODES[mode](r_au)
-        canvas.polyline(proj.many(_unit_circle(rd)), GRID)
-        lx, ly, _ = proj((rd * math.cos(-0.35), rd * math.sin(-0.35), 0.0))
-        col, row, label = int(lx) // 2 + 1, int(ly) // 4, f"{r_au}au"
-        if 0 <= row < canvas.rows and all(
-            canvas.cells[row][c] is None for c in range(col - 1, col + len(label) + 1) if 0 <= c < canvas.cols
-        ):
-            canvas.text(col, row, label, GRID_LABEL, depth=BACKDROP)
-    r_in, r_out = SCALE_MODES[mode](0.25), SCALE_MODES[mode](GRID_RINGS_AU[-1])
-    for deg in (0, 90, 180, 270):
-        c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
-        canvas.line(proj((r_in * c, r_in * s, 0.0)), proj((r_out * c, r_out * s, 0.0)), GRID)
-    ex, ey, _ = proj((r_out * 1.04, 0.0, 0.0))
-    canvas.text(int(ex) // 2, int(ey) // 4, "♈ 0°", GRID_LABEL, depth=BACKDROP)
+def sun_radius_px(scale: float) -> float:
+    """The Sun grows with zoom (within limits), like everything else on screen."""
+    return max(SUN_MIN_PX, min(SUN_MAX_PX, 0.18 * scale))
 
 
 def _draw_body(canvas: Canvas, body: Body, sx: float, sy: float, depth: float, scale: float, opts: SceneOptions) -> None:
     col, row = int(sx) // 2, int(sy) // 4
     if body is SUN:
-        glow = max(1.5, min(6.0, 0.18 * scale))
-        steps = int(glow * 8)
-        for ring in (glow, glow * 0.6):
-            for k in range(steps):
-                a = math.tau * k / steps
-                canvas.dot(sx + ring * math.cos(a), sy + ring * math.sin(a), shade(body.color, 0.8), depth)
-        canvas.put(col, row, Cell("*" if opts.ascii else "☼", (255, 240, 160), bold=True), depth + 1e6)
+        # A solid disc, white-hot at the centre fading to orange at the limb. (Hollow rings of
+        # dots broke apart around the glyph and label once they grew.)
+        r = sun_radius_px(scale)
+        reach = math.ceil(r)
+        for yi in range(math.floor(sy) - reach, math.floor(sy) + reach + 1):
+            for xi in range(math.floor(sx) - reach, math.floor(sx) + reach + 1):
+                t = math.hypot(xi + 0.5 - sx, yi + 0.5 - sy) / r
+                if t <= 1:
+                    k = t**1.5
+                    color = tuple(int(a + (b - a) * k) for a, b in zip(SUN_CORE, SUN_EDGE))
+                    canvas.dot(xi, yi, color, depth)
+        if r < SUN_GLYPH_PX:
+            canvas.put(col, row, Cell("*" if opts.ascii else "☼", (255, 240, 160), bold=True), depth + 1e6)
         return
     if body.kind == "comet":
         glyph = "*" if opts.ascii else "✦"
@@ -379,4 +364,5 @@ def _draw_label(canvas: Canvas, body, sx: float, sy: float, selected: bool) -> N
         ):
             fg = (255, 255, 255) if selected else shade(body.color, 0.7 if getattr(body, "small", False) else 0.95)
             canvas.text(c0, r0, name, fg, bold=selected, reverse=selected)
+            canvas.labels.append((r0, max(c0, 0), min(c0 + len(name), canvas.cols), body.key))  # clickable
             return

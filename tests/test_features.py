@@ -100,9 +100,9 @@ def test_jumps():
 
 def test_settings_validation(tmp_path):
     p = tmp_path / "s.json"
-    settings.save({"zoom": 2.5, "grid": False, "nonsense": 1}, p)
-    assert settings.load(p) == {"zoom": 2.5, "grid": False}
-    p.write_text(json.dumps({"zoom": True, "grid": 0, "scale": 3}))
+    settings.save({"zoom": 2.5, "orbits": False, "nonsense": 1}, p)
+    assert settings.load(p) == {"zoom": 2.5, "orbits": False}
+    p.write_text(json.dumps({"zoom": True, "orbits": 0, "scale": 3}))
     assert settings.load(p) == {}  # wrong types are dropped, not trusted
     p.write_text("{broken")
     assert settings.load(p) == {}
@@ -138,7 +138,7 @@ def test_orbit_in_front_of_planet_is_cut_out_of_it():
 
     def draw(orbits: bool) -> Canvas:
         sc = SystemScene(BY_KEY["jupiter"], MOONS_OF["jupiter"], pos, moons.orbits, (1.0, 0.0, 0.0))
-        sc.opts.show_grid = sc.opts.show_drops = sc.opts.show_labels = False
+        sc.opts.show_drops = sc.opts.show_labels = False
         sc.opts.show_orbits = orbits
         cam = Camera()
         cam.pitch = math.radians(4)
@@ -161,32 +161,6 @@ def test_orbit_in_front_of_planet_is_cut_out_of_it():
     assert len(gaps) > 5
     for r, k in gaps:
         assert planet_shade(crossed.dot_fg[r][k]) and crossed.dot_fg[r][k] not in orbit_colours
-
-
-def test_grid_hides_what_wraps_behind_the_planet():
-    # From above (the default pitch), a ring's far half projects above the planet's centre on
-    # screen. Those parts are hidden; seen face-on (from the pole), rings have no back and stay whole.
-    from orrery.render import GRID
-    from orrery.system import SystemScene, draw_system
-
-    moons = offline_moon_snapshot("jupiter", JD)
-    pos = {k: o.position(JD) for k, o in moons.orbits.items()}
-
-    def grid_dots(pitch_deg: float) -> tuple[int, int]:
-        sc = SystemScene(BY_KEY["jupiter"], MOONS_OF["jupiter"], pos, moons.orbits, (1.0, 0.0, 0.0))
-        sc.opts.show_orbits = sc.opts.show_drops = sc.opts.show_labels = False
-        cam = Camera()
-        cam.pitch = math.radians(pitch_deg)
-        c = Canvas(100, 30)
-        draw_system(c, cam, sc)
-        centre_row = int(sc.disc[1])
-        cells = [(r, k) for r in range(c.rows) for k in range(c.cols) if c.bits[r][k] and c.dot_fg[r][k] == GRID]
-        return sum(r < centre_row - 2 for r, _ in cells), len(cells)
-
-    above, total = grid_dots(35)
-    assert total > 100 and above < 0.05 * total  # only the front arcs (and the pole axis) remain
-    above, total = grid_dots(90)
-    assert above > 0.3 * total  # face-on: whole rings
 
 
 def test_clicks_pick_the_planet_disc_and_double_clicks_follow():
@@ -223,3 +197,76 @@ def test_render_returns_hits_and_hides_small_bodies():
     assert "ceres" in hits and "jupiter" in hits
     scene.opts.show_small = False
     assert "ceres" not in draw_scene(Canvas(120, 40), Camera(), scene)
+
+
+def test_pole_axis_shows_tilt_and_hides_behind_the_planet():
+    from orrery.system import AXIS, SystemScene, draw_system
+
+    def axis_cells(planet: str, pitch_deg: float):
+        moons = offline_moon_snapshot(planet, JD)
+        pos = {k: o.position(JD) for k, o in moons.orbits.items()}
+        sc = SystemScene(BY_KEY[planet], MOONS_OF[planet], pos, moons.orbits, (1.0, 0.0, 0.0))
+        sc.opts.show_orbits = sc.opts.show_drops = sc.opts.show_labels = False
+        cam = Camera()
+        cam.pitch = math.radians(pitch_deg)
+        c = Canvas(100, 30)
+        draw_system(c, cam, sc)
+        cells = [(r, k) for r in range(c.rows) for k in range(c.cols) if c.bits[r][k] and c.dot_fg[r][k] == AXIS]
+        label = any(c.cells[r][k] and c.cells[r][k].ch == "N" for r in range(c.rows) for k in range(c.cols))
+        return cells, label, sc.disc
+
+    cells, label, (cx, cy, _) = axis_cells("jupiter", 35)
+    assert cells and label
+    # Jupiter's axis is nearly upright: seen from above, only the north end (above centre) shows.
+    assert all(r < cy for r, _ in cells)
+    cells, _, (cx, cy, _) = axis_cells("uranus", 0)
+    rows = {r for r, _ in cells}
+    assert len({k for _, k in cells}) > len(rows)  # Uranus's axis lies nearly sideways
+
+
+def test_sun_is_a_solid_disc_when_zoomed_in():
+    # Zoomed in, the Sun is a filled disc with its label beside it (hollow rings used to break up
+    # around the ☼ glyph and label). Zoomed out, the ☼ glyph marks it.
+    snap = offline_snapshot(JD)
+    pos = {"sun": (0.0, 0.0, 0.0), **{k: o.position(JD) for k, o in snap.orbits.items()}}
+    scene = Scene(pos, snap.orbits)
+    scene.opts.show_orbits = False
+    cam = Camera()
+    cam.zoom = 4.0
+    c = Canvas(120, 40)
+    col, row = draw_scene(c, cam, scene)["sun"]
+    assert c.bits[row][col] == 0xFF and c.cells[row][col] is None  # a full cell of dots, no glyph
+    label = "".join(cell.ch if cell else " " for cell in c.cells[row])
+    assert "Sun" in label and label.index("Sun") > col + 2  # beside the disc
+    cam.zoom = 0.5
+    small = Canvas(120, 40)
+    col, row = draw_scene(small, cam, scene)["sun"]
+    assert small.cells[row][col].ch == "☼"
+
+
+def test_clicking_a_name_selects_its_body():
+    import argparse
+    from orrery.app import App
+    from orrery.terminal import Mouse
+
+    def click(app, col, row):
+        app.last_click = None
+        app.handle(Mouse("press", 0, col, row))
+        app.handle(Mouse("release", 0, col, row))
+
+    for system in (None, "jupiter"):
+        app = App(argparse.Namespace(offline=True, scale=None, date=None, ascii=False, once=True, size=None,
+                                     system=system, fresh=True, no_mouse=False))
+        app.frame(140, 40)
+        opts = app.active_opts
+        clicked = 0
+        for key in [k for *_, k in app.labels]:
+            spans = [(r, c1) for r, _, c1, k in app.labels if k == key]  # where it is now: selecting moves labels
+            if key == opts.selected or not spans:
+                continue
+            row, c1 = spans[0]
+            click(app, c1 - 1, row)  # the last letter: well away from the body's own dot
+            assert opts.selected == key, (system, key)
+            clicked += 1
+            app.frame(140, 40)
+        assert clicked >= 4

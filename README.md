@@ -39,7 +39,7 @@ On macOS/Linux, use `.venv/bin/...`. It needs Python 3.10+ and a truecolor termi
 | `space` | pause or resume time |
 | `t` | jump back to present, at real time |
 | `m` | cycle the distance scale: log → sqrt → linear |
-| `g` `o` `d` `n` | toggle the grid, orbits, drop lines to the ecliptic, and names |
+| `o` `d` `n` | toggle orbits, drop lines to the ecliptic, and names |
 | `a` | auto-spin the camera |
 | `p` | toggle the info panel |
 | `?` | show or hide the key legend (keys keep working while it's open; `Esc` or a click closes it) |
@@ -51,7 +51,7 @@ On macOS/Linux, use `.venv/bin/...`. It needs Python 3.10+ and a truecolor termi
 
 ### Mouse
 
-Drag to rotate and tilt, scroll to zoom, and click a body to select it. Double-click a planet to open its moons, or any other body to follow it. In the moon view, click anywhere on the planet to show its details again, and double-click a moon or the planet to follow it. Right-click backs out of the moon view or the jump menu. Pass `--no-mouse` to keep your terminal's text selection instead.
+Drag to rotate and tilt, scroll to zoom, and click a body or its name to select it. Double-click a planet to open its moons, or any other body to follow it. In the moon view, click anywhere on the planet to show its details again, and double-click a moon or the planet to follow it. Right-click backs out of the moon view or the jump menu. Pass `--no-mouse` to keep your terminal's text selection instead.
 
 ### Jumping in time
 
@@ -67,7 +67,7 @@ The camera, zoom, scale, toggles and selection for both views are saved on quit 
 
 ### Planetary system view
 
-Opening a planet with `Enter` shows it at the centre, lit from the Sun's direction, with its moons on their real orbits. The rings mark distances in the planet's equatorial plane, the `N` axis is its north pole, and the ☼ marker at the edge points to the Sun. Moons in the planet's shadow are drawn dimmed. Rotate, tilt, zoom, time and the `g o d n a i p` toggles work as in the main view; the camera is kept separate from the main one.
+Opening a planet with `Enter` shows it at the centre, lit from the Sun's direction, with its moons on their real orbits. The `N` axis is its north pole, showing its tilt, and the ☼ marker at the edge points to the Sun. Moons in the planet's shadow are drawn dimmed. Rotate, tilt, zoom, time and the `o d n a i p` toggles work as in the main view; the camera is kept separate from the main one.
 
 | Key | Action |
 |---|---|
@@ -77,29 +77,7 @@ Opening a planet with `Enter` shows it at the centre, lit from the Sun's directi
 | `m` | cycle the distance scale: log  → sqrt → linear |
 | `Esc` / `Enter` / `v` | back to the solar system |
 
-The panel lists **upcoming events**: moons entering the planet's shadow (eclipses), and transits and occultations as seen from Earth. Countdowns run against simulated time, and the footer announces each event as it begins (at up to 1 hr/s). In Earth's system the list shows solar and lunar eclipses for the next 400 days, with their type: total, annular or partial. Times are geometric, with no light-travel delay added. They also treat the planet as a sphere, so events at oblate Saturn and Jupiter can be off by a few minutes.
+The panel lists **upcoming events**: moons entering the planet's shadow, and transits and occultations as seen from Earth. Countdowns run against simulated time, and the footer announces each event as it begins (at up to 1 hr/s). In Earth's system the list shows solar and lunar eclipses for the next 400 days, with their type: total, annular or partial. Times are geometric, with no light-travel delay added. They also treat the planet as a sphere, so events at oblate Saturn and Jupiter can be off by a few minutes.
 
-Moon positions are fetched from Horizons for the system you open. They are cached in `~/.cache/orrery/horizons-moons.json` for 5 days and re-fetched once simulated time drifts 2 days from the data epoch, because moon orbits are perturbed much faster than planetary ones. Offline, the app uses built-in elements fitted to Horizons at 2026-01-01. Those are good to a few degrees of orbital phase near the present. Earth's Moon is the exception: it always comes from the ELP-2000 lunar theory (Meeus, *Astronomical Algorithms*, ch. 47), good to well under an arcminute for centuries, which is what eclipse prediction needs.
+Moon positions are fetched from Horizons for the system you open. They are cached in `~/.cache/orrery/horizons-moons.json` for 5 days and re-fetched once simulated time drifts 2 days from the data epoch, because moon orbits are perturbed much faster than planetary ones. Offline, the app uses built-in elements fitted to Horizons at 2026-01-01.
 
-## How it works
-
-- **`orrery/ephemeris.py`**: queries the Horizons API (`EPHEM_TYPE=VECTORS`, `CENTER=500@10`, ecliptic J2000, au and au/day) one body at a time. It goes sequentially because Horizons answers concurrent requests with HTTP 503. It retries 503s with backoff, caches the last fetch at `~/.cache/orrery/horizons.json`, and runs all network work on a background thread. HTTPS uses the OS certificate store via `truststore`.
-- **`orrery/kepler.py`**: converts state vectors to osculating elements and propagates them two-body style.
-- **`orrery/bodies.py`**: body catalogue and JPL's *Keplerian Elements for Approximate Positions*, which serve as the offline fallback.
-- **`orrery/render.py`**: orthographic camera projecting onto a braille-dot canvas. Each terminal cell is 2×4 dots, which gives roughly square pixels. Orbit segments behind the Sun's plane of view are drawn dimmer, and drop lines from each planet to the ecliptic show inclination.
-- **`orrery/terminal.py`**: raw ANSI output plus non-blocking keys and SGR mouse reports.
-- **`orrery/moons.py`**, **`orrery/system.py`**: the moon catalogue and the planet-centred view.
-- **`orrery/lunar.py`**: the analytic Moon, and Earth's centre.
-- **`orrery/events.py`**: event search. Each event is a window where a smooth separation function dips below zero (say, a moon's distance from the shadow axis minus the shadow's radius). It's sampled finely enough for the shortest event, dips between samples are refined, and contacts are bisected. Shadows are true umbral cones, with Earth's enlarged 2% for its atmosphere.
-- **`orrery/jumps.py`**, **`orrery/settings.py`**: date parsing and presets; saved settings.
-
-The header shows where the data came from: green **LIVE**, yellow **CACHED** or red **OFFLINE**. If Horizons can't be reached, the footer shows the reason.
-
-Accuracy: two-body propagation from a Horizons epoch stays within a small fraction of a degree for months.
-
-## Tests
-
-```powershell
-.\.venv\Scripts\pip install -e ".[dev]"
-.\.venv\Scripts\python -m pytest
-```
