@@ -359,7 +359,9 @@ def _draw_body(canvas: Canvas, body: Body, sx: float, sy: float, depth: float, s
             depths[cr][cc] = depth
         return
     if body.kind == "comet":
-        glyph = "*" if opts.ascii else "✦"
+        # ◆ sits in Geometric Shapes beside ●, so terminal fonts have it at one cell wide. (✦ is a
+        # dingbat most fonts lack; the fallback font drew it wider, onto the selection bracket.)
+        glyph = "*" if opts.ascii else "◆"
     elif body.small:
         glyph = "." if opts.ascii else "•"
     else:
