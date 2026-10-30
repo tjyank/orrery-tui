@@ -4,7 +4,7 @@ Earth, and, for Earth's own system, solar and lunar eclipses.
 Every event is a window where some smooth separation function f(t) dips below zero (for example,
 a moon's distance from the axis of its planet's shadow, minus the shadow's radius). We sample f
 on a grid fine enough for the shortest event, refine any dip that sits between samples, then
-bisect the contacts. Times are geometric (light travel time is not added).
+bisect the contacts. Times are as seen from Earth: each includes the light time from the planet.
 """
 from __future__ import annotations
 
@@ -171,12 +171,46 @@ class MoonTrack:
     position: PosFn  # planetocentric, au
 
 
+class _Interpolated:
+    """A slowly changing position, tabulated over [t0, t1] and linearly interpolated."""
+
+    STEP = 0.25  # days
+
+    def __init__(self, fn: PosFn, t0: float, t1: float):
+        self.t0 = t0 - self.STEP  # a margin: root finders probe slightly outside the window
+        n = int(math.ceil((t1 - self.t0) / self.STEP)) + 2
+        self.table = [fn(self.t0 + k * self.STEP) for k in range(n + 1)]
+
+    def __call__(self, t: float) -> Vec3:
+        x = (t - self.t0) / self.STEP
+        k = min(max(int(x), 0), len(self.table) - 2)
+        f = x - k
+        a, b = self.table[k], self.table[k + 1]
+        return (a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f)
+
+
 def system_events(planet_key: str, planet_radius_km: float, planet_pos: PosFn, earth_pos: PosFn,
                   moons: list[MoonTrack], t0: float, horizon: float = SYSTEM_HORIZON_DAYS) -> list[Event]:
     """Eclipses, transits and occultations of a planet's moons over [t0, t0 + horizon]."""
     if planet_key == "earth":
         return earth_eclipses(earth_pos, moons[0].position, t0, horizon) if moons else []
+    # Times are as seen from Earth: what happens at the planet at time t is seen at t + light time.
+    # So search from one light time before t0, and shift every result by its light time.
+    t_from = t0 - light_time(planet_pos(t0), earth_pos(t0)) - 0.01
     t1 = t0 + horizon
+    # The moons are sampled every few minutes, but the planet and Earth barely move in that time:
+    # tabulate them every 6 hours and interpolate. (Earth's exact position needs the lunar theory,
+    # which made this search take seconds; the interpolation is off by a few hundred km, nothing
+    # at planetary distances.)
+    planet_pos = _Interpolated(planet_pos, t_from, t1 + 0.5)
+    earth_pos = _Interpolated(earth_pos, t_from, t1 + 0.5)
+
+    def lt(t: float) -> float:
+        return light_time(planet_pos(t), earth_pos(t))
+
+    def seen(t: float | None) -> float | None:
+        return None if t is None else t + lt(t)
+
     out: list[Event] = []
     for m in moons:
         step = min(max(m.period_days / 150, 1 / 720), 0.25)  # 2 min .. 6 h
@@ -185,22 +219,31 @@ def system_events(planet_key: str, planet_radius_km: float, planet_pos: PosFn, e
             x = tuple(c * AU_KM for c in m.position(t))
             return shadow_margin(x, planet_pos(t), planet_radius_km)
 
-        def disc(t, m=m):  # distance from the Earth-planet sight line, minus the planet's radius
+        def sight_line(t):  # unit vector from Earth, when this light reaches it, to the planet
             p = planet_pos(t)
-            los = _sub(p, earth_pos(t))
+            los = _sub(p, earth_pos(t + lt(t)))
             n = _norm(los)
-            _, off = _axis_offset(tuple(c * AU_KM for c in m.position(t)), (los[0] / n, los[1] / n, los[2] / n))
+            return (los[0] / n, los[1] / n, los[2] / n)
+
+        def disc(t, m=m):  # distance from the sight line, minus the planet's radius
+            _, off = _axis_offset(tuple(c * AU_KM for c in m.position(t)), sight_line(t))
             return off - planet_radius_km
 
-        for start, end, peak in windows(shadow, t0, t1, step):
-            out.append(Event("eclipse", m.key, m.name, start, end, peak))
-        for start, end, peak in windows(disc, t0, t1, step):
-            p = planet_pos(peak)
-            los = _sub(p, earth_pos(peak))
-            beyond = _dot(m.position(peak), los) > 0  # farther than the planet: hidden behind it
-            out.append(Event("occultation" if beyond else "transit", m.key, m.name, start, end, peak))
+        for start, end, peak in windows(shadow, t_from, t1, step):
+            out.append(Event("eclipse", m.key, m.name, seen(start), seen(end), seen(peak)))
+        for start, end, peak in windows(disc, t_from, t1, step):
+            beyond = _dot(m.position(peak), sight_line(peak)) > 0  # farther than the planet: hidden behind it
+            out.append(Event("occultation" if beyond else "transit", m.key, m.name, seen(start), seen(end), seen(peak)))
     out.sort(key=Event.begins)
     return out
+
+
+C_AU_PER_DAY = 299_792.458 * 86_400 / AU_KM
+
+
+def light_time(planet_au: Vec3, earth_au: Vec3) -> float:
+    """Days light takes from the planet to Earth."""
+    return _norm(_sub(planet_au, earth_au)) / C_AU_PER_DAY
 
 
 MOON_RADIUS_KM = 1_737.4

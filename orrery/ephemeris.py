@@ -24,10 +24,38 @@ except ImportError:
     pass
 
 HORIZONS_URL = "https://ssd.jpl.nasa.gov/api/horizons.api"
-CACHE_FILE = Path(os.environ.get("ORRERY_CACHE", Path.home() / ".cache" / "orrery" / "horizons.json"))
+
+
+def _default_cache_dir(os_name: str = os.name, env=os.environ) -> Path:
+    if os_name == "nt" and env.get("LOCALAPPDATA"):
+        return Path(env["LOCALAPPDATA"]) / "orrery"  # where Windows apps keep caches
+    return Path(env.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "orrery"
+
+
+CACHE_FILE = Path(os.environ.get("ORRERY_CACHE", _default_cache_dir() / "horizons.json"))
 CACHE_MAX_AGE_DAYS = 45  # cached osculating elements are fine within ~a month
 MOON_CACHE_FILE = CACHE_FILE.with_name("horizons-moons.json")
 MOON_CACHE_MAX_AGE_DAYS = 5  # moon orbits are perturbed much faster than planetary ones
+# Dwarf planets, asteroids and comets move slowly and their orbits change little: re-fetch them only
+# once simulated time is this far from their data. Routine refreshes then fetch just the 9 planets.
+SMALL_BODY_REFRESH_DAYS = 10
+
+# Horizons answers simultaneous requests from one client with HTTP 503, and the planets and each
+# moon system fetch on their own threads. One lock per request makes them take turns, request by
+# request, so no fetch waits for another's whole batch.
+_HORIZONS_LOCK = threading.Lock()
+_MOON_CACHE_LOCK = threading.Lock()  # its read-modify-write must not interleave between threads
+
+
+def _write_json_atomic(path: Path, data) -> None:
+    """Write whole or not at all: a crash or a concurrent reader never sees half a file."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+        tmp.write_text(json.dumps(data))
+        os.replace(tmp, path)
+    except OSError:
+        pass  # a cache we can't write is no reason to fail
 
 
 def jd_now() -> float:
@@ -81,70 +109,118 @@ def _fetch_state(horizons_id: str, name: str, jd: float, timeout: float, center:
     req = urllib.request.Request(url, headers={"User-Agent": "orrery-tui/0.1"})
     for attempt in range(retries + 1):
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            with _HORIZONS_LOCK, urllib.request.urlopen(req, timeout=timeout) as resp:
                 payload = json.load(resp)
             break
-        except urllib.error.HTTPError as exc:  # Horizons answers 503 when busy or hit concurrently
+        except urllib.error.HTTPError as exc:  # Horizons answers 503 when busy
             if exc.code != 503 or attempt == retries:
                 raise
             time.sleep(1.5 * (attempt + 1))
+    return parse_vectors(payload, name)
+
+
+def parse_vectors(payload: dict, name: str) -> tuple[tuple, tuple]:
+    """Position (au) and velocity (au/day) from a Horizons VECTORS reply (JSON, CSV table)."""
     if "error" in payload:
         raise RuntimeError(f"{name}: {payload['error']}")
-    text = payload["result"]
+    text = payload.get("result")
     try:
         row = text.split("$$SOE", 1)[1].split("$$EOE", 1)[0].strip().splitlines()[0]
-    except IndexError:
+        cols = [c.strip() for c in row.split(",")]
+        x, y, z, vx, vy, vz = (float(c) for c in cols[2:8])
+    except (AttributeError, IndexError, ValueError):
         raise RuntimeError(f"{name}: unexpected Horizons response") from None
-    cols = [c.strip() for c in row.split(",")]
-    x, y, z, vx, vy, vz = (float(c) for c in cols[2:8])
     return (x, y, z), (vx, vy, vz)
 
 
-def fetch_horizons(jd: float, timeout: float = 20.0, progress=None) -> Snapshot:
-    # Sequential on purpose: Horizons rejects concurrent requests from one client with 503s.
+PLANET_BODIES = [b for b in ORBITING if not b.small]
+SMALL_BODIES = [b for b in ORBITING if b.small]
+
+
+def fetch_horizons(jd: float, timeout: float = 20.0, progress=None, publish=None) -> Snapshot:
+    """Planets first; then, if their cached data is old for `jd`, the small bodies.
+
+    `publish(snapshot)`, if given, receives the planets as soon as they're in (with the small bodies
+    from the cache or the offline model), so the view updates before the slower second stage.
+    """
+    small_cached = _load_small_states()
+    need_small = small_cached is None or abs(jd - small_cached[0]) > SMALL_BODY_REFRESH_DAYS
+    total = len(PLANET_BODIES) + (len(SMALL_BODIES) if need_small else 0)
     states = {}
-    for n, body in enumerate(ORBITING):
+    for n, body in enumerate(PLANET_BODIES):
         if progress:
-            progress(n, len(ORBITING))
+            progress(n, total)
+        states[body.key] = _fetch_state(body.horizons_id, body.name, jd, timeout, body.center)
+    if not need_small:
+        _save_cache(jd, states, *small_cached)
+        return Snapshot(_orbits_from_states(states, jd, *small_cached), jd, "live")
+
+    if publish:
+        publish(Snapshot(_orbits_from_states(states, jd, *(small_cached or (jd, {}))), jd, "live"))
+    small_states = {}
+    for n, body in enumerate(SMALL_BODIES, len(PLANET_BODIES)):
+        if progress:
+            progress(n, total)
         try:
-            states[body.key] = _fetch_state(body.horizons_id, body.name, jd, timeout, body.center)
+            small_states[body.key] = _fetch_state(body.horizons_id, body.name, jd, timeout, body.center)
         except Exception:
-            if not body.small:
-                raise
-            # A small body Horizons can't resolve shouldn't sink the planets: the offline orbit fills in.
-    _save_cache(jd, states)
-    return Snapshot(_orbits_from_states(states, jd), jd, "live")
+            pass  # one small body Horizons can't resolve shouldn't sink the rest: its offline orbit fills in
+    _save_cache(jd, states, jd, small_states)
+    return Snapshot(_orbits_from_states(states, jd, jd, small_states), jd, "live")
 
 
-def _orbits_from_states(states: dict, epoch: float) -> dict[str, Orbit]:
-    """Osculating orbits for every body; any body without a usable state gets its offline orbit."""
+def _orbits_from_states(states: dict, epoch: float, small_epoch: float, small_states: dict) -> dict[str, Orbit]:
+    """Osculating orbits: planets from `states` at `epoch` (all required), small bodies from
+    `small_states` at their own epoch, each falling back to its offline orbit when missing."""
     orbits = {}
-    for b in ORBITING:
+    for b in PLANET_BODIES:
+        r, v = states[b.key]
+        orbits[b.key] = orbit_from_state(tuple(r), tuple(v), epoch, b.mu)
+    for b in SMALL_BODIES:
         try:
-            r, v = states[b.key]
-            orbits[b.key] = orbit_from_state(tuple(r), tuple(v), epoch, b.mu)
+            r, v = small_states[b.key]
+            orbits[b.key] = orbit_from_state(tuple(r), tuple(v), small_epoch, b.mu)
         except (KeyError, ValueError, TypeError):
-            if not b.small:
-                raise KeyError(b.key)
             orbits[b.key] = approximate_orbit(b, epoch)
     return orbits
 
 
-def _save_cache(jd: float, states: dict) -> None:
+def _save_cache(jd: float, states: dict, small_epoch: float, small_states: dict) -> None:
+    _write_json_atomic(CACHE_FILE, {"epoch": jd, "states": states,
+                                    "small": {"epoch": small_epoch, "states": small_states}})
+
+
+def _read_cache() -> dict | None:
     try:
-        CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        CACHE_FILE.write_text(json.dumps({"epoch": jd, "states": states}))
-    except OSError:
-        pass
+        data = json.loads(CACHE_FILE.read_text())
+        return data if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _load_small_states() -> tuple[float, dict] | None:
+    """The cached small-body states and their epoch, if any."""
+    data = _read_cache()
+    try:
+        if "small" in data:
+            return float(data["small"]["epoch"]), dict(data["small"]["states"])
+        # Older caches kept everything together, at the planets' epoch.
+        small = {b.key: data["states"][b.key] for b in SMALL_BODIES if b.key in data["states"]}
+        return (float(data["epoch"]), small) if small else None
+    except (KeyError, ValueError, TypeError):
+        return None
 
 
 def load_cache(jd: float) -> Snapshot | None:
+    data = _read_cache()
     try:
-        data = json.loads(CACHE_FILE.read_text())
         epoch = float(data["epoch"])
         if abs(jd - epoch) > CACHE_MAX_AGE_DAYS:
             return None
-        orbits = _orbits_from_states(data["states"], epoch)
+        small_epoch, small_states = _load_small_states() or (epoch, {})
+        if abs(jd - small_epoch) > CACHE_MAX_AGE_DAYS:
+            small_states = {}  # too old to trust: the offline orbits do better
+        orbits = _orbits_from_states(data["states"], epoch, small_epoch, small_states)
         mtime = datetime.fromtimestamp(CACHE_FILE.stat().st_mtime, tz=timezone.utc)
         return Snapshot(orbits, epoch, "cache", fetched_at=mtime)
     except (OSError, ValueError, KeyError, TypeError):
@@ -155,12 +231,12 @@ def offline_snapshot(jd: float) -> Snapshot:
     return Snapshot({b.key: approximate_orbit(b, jd) for b in ORBITING}, jd, "offline")
 
 
-def best_snapshot(jd: float, allow_network: bool = True, progress=None) -> Snapshot:
+def best_snapshot(jd: float, allow_network: bool = True, progress=None, publish=None) -> Snapshot:
     """Live data if reachable, else a recent cache, else the analytic model."""
     error = None
     if allow_network:
         try:
-            return fetch_horizons(jd, progress=progress)
+            return fetch_horizons(jd, progress=progress, publish=publish)
         except Exception as exc:  # network, TLS, HTTP or parse failure
             error = str(exc) or type(exc).__name__
     snap = load_cache(jd) or offline_snapshot(jd)
@@ -192,13 +268,12 @@ def _read_moon_cache() -> dict:
 
 
 def _save_moon_cache(planet: str, jd: float, states: dict) -> None:
-    data = _read_moon_cache()
-    data[planet] = {"epoch": jd, "states": states}
-    try:
-        MOON_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        MOON_CACHE_FILE.write_text(json.dumps(data))
-    except OSError:
-        pass
+    # Every planet's moons share one file: update it under the lock, or two systems finishing
+    # together could each write back a copy missing the other's entry.
+    with _MOON_CACHE_LOCK:
+        data = _read_moon_cache()
+        data[planet] = {"epoch": jd, "states": states}
+        _write_json_atomic(MOON_CACHE_FILE, data)
 
 
 def load_moon_cache(planet: str, jd: float) -> Snapshot | None:
@@ -221,7 +296,7 @@ def offline_moon_snapshot(planet: str, jd: float) -> Snapshot:
     return Snapshot({m.key: mean_moon_orbit(m) for m in MOONS_OF[planet]}, jd, "offline")
 
 
-def best_moon_snapshot(planet: str, jd: float, allow_network: bool = True, progress=None) -> Snapshot:
+def best_moon_snapshot(planet: str, jd: float, allow_network: bool = True, progress=None, publish=None) -> Snapshot:
     error = None
     if allow_network and MOONS_OF[planet]:
         try:
@@ -236,7 +311,8 @@ def best_moon_snapshot(planet: str, jd: float, allow_network: bool = True, progr
 class EphemerisService:
     """Fetches snapshots on a background thread so the UI never blocks on the network.
 
-    `loader(jd, allow_network, progress)` produces the snapshot; by default the planets.
+    `loader(jd, allow_network, progress, publish)` produces the snapshot (by default, the planets'),
+    and may hand over an early partial result through `publish` while it carries on.
     """
 
     def __init__(self, allow_network: bool = True, loader=best_snapshot):
@@ -262,11 +338,15 @@ class EphemerisService:
         threading.Thread(target=self._run, args=(jd,), daemon=True).start()
         return True
 
+    def _publish(self, snap: Snapshot) -> None:
+        with self._lock:
+            self._latest = snap
+
     def _run(self, jd: float) -> None:
         try:
-            snap = self.loader(jd, self.allow_network, self._progress)
+            snap = self.loader(jd, self.allow_network, self._progress, self._publish)
         except Exception as exc:  # never let the worker die silently
-            snap = self.loader(jd, False, None)  # cache or analytic model
+            snap = self.loader(jd, False, None, None)  # cache or analytic model
             snap.error = str(exc)
         with self._lock:
             self._latest = snap

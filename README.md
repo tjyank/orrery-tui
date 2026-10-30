@@ -2,7 +2,7 @@
 
 A live, isometric, rotatable model of the solar system in your terminal.
 
-Planet positions come from **NASA/JPL Horizons**. Each state vector is turned into an osculating Keplerian orbit. When the simulated time drifts more than 20 days from the data epoch, the app fetches fresh data in the background. 
+Planet positions come from **NASA/JPL Horizons**. Each state vector is turned into an osculating Keplerian orbit. When the simulated time drifts more than 20 days from the data epoch, the app fetches fresh data in the background: the planets first (they appear within seconds), then the small bodies. While you watch the present it refreshes every 15 minutes. Requests go to Horizons one at a time, as it asks of clients.
 
 ## Run
 
@@ -18,7 +18,7 @@ On macOS/Linux, use `.venv/bin/...`. It needs Python 3.10+ and a truecolor termi
 |---|---|
 | `--scale log\|sqrt\|linear` | radial distance compression |
 | `--date 1977-09-05` | start at a UTC date/time instead of now |
-| `--offline` | Uses the last cached fetch |
+| `--offline` | never contact Horizons: use the last cached fetch, or the built-in orbits (JPL's approximate elements, accurate for 1800–2050) |
 | `--ascii` | ASCII glyphs for bodies, for terminals with poor Unicode fonts |
 | `--once --size 140x40` | print a single frame and exit |
 | `--system jupiter` | start in a planet's moon system view |
@@ -56,11 +56,11 @@ Drag to rotate and tilt, scroll to zoom, and click a body or its name to select 
 
 ### Jumping in time
 
-`J` opens a menu: jump to now, type a UTC date or an offset from the time shown (`+30d`, `-2y`; units `h d w m y`), or pick a preset. The presets are the next total solar eclipse, next lunar eclipse, next Mars and Jupiter oppositions, Halley's next perihelion, and moments like Apollo 11's landing and Voyager 2 at Neptune. After a long jump the app switches straight to the offline model.
+`J` opens a menu: jump to now, type a UTC date or an offset from the time shown (`+30d`, `-2y`; units `h d w m y`), or pick a preset. The presets are the next total solar eclipse, next lunar eclipse, next Mars and Jupiter oppositions, Halley's next perihelion, and moments like Apollo 11's landing and Voyager 2 at Neptune. After a long jump the app switches straight to the offline model, while Horizons loads data for the new date. That model is accurate for 1800–2050; outside that range, positions are only rough until the live data arrives.
 
 ### Small bodies
 
-Ceres, Haumea, Makemake and Eris, Pallas and Vesta, and the comets Halley, Encke and 67P/Churyumov–Gerasimenko. They're drawn smaller, with fainter orbits, and comets grow a tail pointing away from the Sun inside about 4 au. For eccentric orbits the panel adds perihelion distance and date. `b` hides them all.
+Ceres, Haumea, Makemake and Eris, Pallas and Vesta, and the comets Halley, Encke and 67P/Churyumov–Gerasimenko. They're drawn smaller, with fainter orbits, and comets grow a tail pointing away from the Sun inside about 4 au. For eccentric orbits the panel adds perihelion distance and date. `b` hides them all. Their orbits change slowly, so routine refreshes skip them: they're re-fetched once simulated time is 10 days from their data.
 
 ### Remembered settings
 
@@ -78,7 +78,7 @@ Opening a planet with `Enter` shows it at the centre, lit from the Sun's directi
 | `m` | cycle the distance scale: log  → sqrt → linear |
 | `Esc` / `Enter` / `v` | back to the solar system |
 
-The panel lists **upcoming events**: moons entering the planet's shadow, and transits and occultations as seen from Earth. Countdowns run against simulated time, and the footer announces each event as it begins (at up to 1 hr/s). In Earth's system the list shows solar and lunar eclipses for the next 400 days, with their type: total, annular or partial. Times are geometric, with no light-travel delay added. They also treat the planet as a sphere, so events at oblate Saturn and Jupiter can be off by a few minutes.
+The panel lists **upcoming events**: moons entering the planet's shadow, and transits and occultations as seen from Earth. Countdowns run against simulated time, and the footer announces each event as it begins (at up to 1 hr/s). In Earth's system the list shows solar and lunar eclipses for the next 400 days, with their type: total, annular or partial. Times are as seen from Earth, including the light travel time from the planet (46 minutes from Jupiter, at the moment), and the moon view shows the system with the same delay, so a countdown reaches zero just as the view shows the event. The predictions treat the planet as a sphere, so events at oblate Saturn and Jupiter can be off by a few minutes.
 
-Moon positions are fetched from Horizons for the system you open. They are cached in `~/.cache/orrery/horizons-moons.json` for 5 days and re-fetched once simulated time drifts 2 days from the data epoch, because moon orbits are perturbed much faster than planetary ones. Offline, the app uses built-in elements fitted to Horizons at 2026-01-01.
+Moon positions are fetched from Horizons for the system you open. They are cached for 5 days (in `%LOCALAPPDATA%\orrery` on Windows, `~/.cache/orrery` elsewhere) and re-fetched once simulated time drifts 2 days from the data epoch, because moon orbits are perturbed much faster than planetary ones. Offline, the app uses built-in elements fitted to Horizons at 2026-01-01.
 
