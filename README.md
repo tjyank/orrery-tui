@@ -67,13 +67,11 @@ Ceres, Haumea, Makemake and Eris, Pallas and Vesta, and the comets Halley, Encke
 
 ### Trails
 
-`T` draws a fading trail behind each body: where it has been over the last 15 seconds of real time, at the current speed. At real time that's too short to see, so speed time up with `.` (at 1 week/s a trail covers about 15 weeks). The dots are evenly spaced in time, so speed shows: Mercury's dots spread out as it swings close to the Sun. Without a followed body, a trail stops short of a full orbit.
-
-Follow a body (`f`) and the trails are drawn as seen from it. Follow Earth and the outer planets trace retrograde loops, the backward wanderings ancient astronomers saw in the sky. The moon view has trails too, toggled separately.
+`T` draws a fading trail behind each body: where it has been over the last 15 seconds of real time, at the current speed. At real time that's too short to see, so speed time up with `.` The dots are evenly spaced in time, so speed shows: Mercury's dots spread out as it swings close to the Sun. Without a followed body, a trail stops short of a full orbit.
 
 ### Adding any asteroid or comet
 
-Press `/` and type a name, number or designation as JPL Horizons knows it: `Apophis`, `Bennu`, `433` (Eros), `Hale-Bopp`, `2P`, `C/2021 S4`. The lookup runs in the background, and the object is added, selected and drawn like the built-in small bodies. It's remembered between runs (in `bodies.json`, next to the settings file), refreshed from Horizons with the other small bodies, and has an offline orbit too. `X` removes the selected one.
+Press `/` and type a name, number or designation as JPL Horizons knows it: `Apophis`, `Bennu`, `433`, `Hale-Bopp`, `2P`, `C/2021 S4`. The lookup runs in the background, and the object is added, selected and drawn like the built-in small bodies.
 
 If a name matches several objects, the footer lists their designations so you can type the one you mean. For a periodic comet, the apparition nearest the current date is used. Objects on open orbits, passing through the solar system once (such as interstellar visitors and some new comets), can't be drawn yet, and the footer says so.
 
@@ -92,8 +90,3 @@ Opening a planet with `Enter` shows it at the centre, lit from the Sun's directi
 | `f` | follow the selected moon |
 | `m` | cycle the distance scale: log  → sqrt → linear |
 | `Esc` / `Enter` / `v` | back to the solar system |
-
-The panel lists **upcoming events**: moons entering the planet's shadow, and transits and occultations as seen from Earth. Countdowns run against simulated time, and the footer announces each event as it begins (at up to 1 hr/s). In Earth's system the list shows solar and lunar eclipses for the next 400 days, with their type: total, annular or partial. Times are as seen from Earth, including the light travel time from the planet (46 minutes from Jupiter, at the moment), and the moon view shows the system with the same delay, so a countdown reaches zero just as the view shows the event. The predictions treat the planet as a sphere, so events at oblate Saturn and Jupiter can be off by a few minutes.
-
-Moon positions are fetched from Horizons for the system you open. They are cached for 5 days (in `%LOCALAPPDATA%\orrery` on Windows, `~/.cache/orrery` elsewhere) and re-fetched once simulated time drifts 2 days from the data epoch, because moon orbits are perturbed much faster than planetary ones. Offline, the app uses built-in elements fitted to Horizons at 2026-01-01.
-
