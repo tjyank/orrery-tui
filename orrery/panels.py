@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 import time
 
-from .bodies import ALL_BODIES, BY_KEY, SUN
+from .bodies import ALL_BODIES, BY_KEY, SUN, USER_BODIES
 from .ephemeris import jd_to_datetime
 from .events import EARTH_HORIZON_DAYS, SYSTEM_HORIZON_DAYS
 from .jumps import next_perihelion
@@ -15,6 +15,13 @@ from .system import in_shadow
 from .ui import (ACCENT, C_KM_S, DIM, FG, PANEL_W, RATES, RATE_NAMES, STATUS_COLORS,
                  vec_angle, countdown, vec_len, format_period, short_event, vec_sub, unit_vector)
 
+
+def radius_text(km: float) -> str:
+    if km <= 0:
+        return "unknown"  # Horizons doesn't know every small body's size
+    if km < 1:
+        return f"{km * 1000:,.0f} m"
+    return f"{km:,.1f} km" if km < 100 else f"{km:,.0f} km"
 
 class Panels:
     """Header, footer and the info panels of both views, for App."""
@@ -54,7 +61,9 @@ class Panels:
     def _footer(self, cols: int) -> Canvas:
         c = Canvas(cols, 1)
         c.fill_row(0)
-        if self.flash and time.monotonic() < self.flash_until:
+        if self.lookups.busy:
+            c.text(1, 0, f"Looking up {self.lookups.query!r} on JPL Horizons…"[: cols - 2], ACCENT)
+        elif self.flash and time.monotonic() < self.flash_until:
             c.text(1, 0, self.flash[: cols - 2], ACCENT)
         elif self.message:
             c.text(1, 0, self.message[: cols - 2], STATUS_COLORS["offline"])
@@ -212,7 +221,7 @@ class Panels:
             lon = math.degrees(math.atan2(p[1], p[0])) % 360
             lat = math.degrees(math.asin(p[2] / r))
             lines += [
-                ("Type", body.type_name),
+                ("Type", body.type_name + (", added" if body in USER_BODIES else "")),
                 ("From Sun", f"{r:.4f} au"),
                 ("", f"{r * AU_KM / 1e6:,.1f} M km"),
             ]
@@ -235,7 +244,7 @@ class Panels:
             if orbit.e > 0.1:
                 peri = jd_to_datetime(next_perihelion(orbit, self.sim_jd))
                 lines += [("Perihelion", f"{orbit.a * (1 - orbit.e):.3f} au"), ("Next peri.", f"{peri:%Y-%m-%d}")]
-            lines.append(("Radius", f"{body.radius_km:,.1f} km" if body.radius_km < 100 else f"{body.radius_km:,.0f} km"))
+            lines.append(("Radius", radius_text(body.radius_km)))
             if MOONS_OF.get(body.key):
                 lines.append(("Moons", f"{len(MOONS_OF[body.key])}  (Enter to view)"))
         y = self._panel_lines(c, lines, rows)

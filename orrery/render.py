@@ -233,6 +233,7 @@ class SceneOptions:
     show_drops: bool = True
     show_labels: bool = True
     show_small: bool = True  # dwarf planets, asteroids and comets
+    show_trails: bool = False  # dots where each body has recently been
     ascii: bool = False
     selected: str | None = None
 
@@ -242,6 +243,7 @@ class Scene:
     positions: dict[str, Vec3]  # heliocentric ecliptic, au
     orbits: dict[str, Orbit]
     opts: SceneOptions = field(default_factory=SceneOptions)
+    trails: dict[str, list[Vec3]] = field(default_factory=dict)  # display space, oldest point first
 
 
 def draw_scene(canvas: Canvas, cam: Camera, scene: Scene) -> dict[str, tuple[int, int]]:
@@ -281,6 +283,10 @@ def draw_scene(canvas: Canvas, cam: Camera, scene: Scene) -> dict[str, tuple[int
             canvas.line(top, foot, shade(body.color, 0.35))
             canvas.dot(foot[0], foot[1], shade(body.color, 0.6), foot[2])
 
+    for _, _, body in items:
+        if body.key in scene.trails:
+            draw_trail(canvas, proj, scene.trails[body.key], body.color)
+
     for (sx, sy, depth), d, body in items:
         if body.kind == "comet":
             _draw_tail(canvas, proj, body, scene.positions.get(body.key), d)
@@ -292,6 +298,15 @@ def draw_scene(canvas: Canvas, cam: Camera, scene: Scene) -> dict[str, tuple[int
                 sx += sun_radius_px(proj.scale) - 2
             _draw_label(canvas, body, sx, sy, body.key == scene.opts.selected)
     return {body.key: (int(sx) // 2, int(sy) // 4) for (sx, sy, _), _, body in items}
+
+
+def draw_trail(canvas: Canvas, proj: Projector, points: list[Vec3], color: RGB, hidden=None) -> None:
+    """A trail: one dot per sample, fading from the newest to the oldest. The dots win their cells'
+    colour over orbits, which are drawn earlier and dimmer."""
+    n = len(points)
+    for i, (x, y, d) in enumerate(proj.many(points)):
+        if hidden is None or not hidden(x, y, d):
+            canvas.dot(x, y, shade(color, 0.15 + 0.8 * (i + 1) / n), d + 1e5)
 
 
 TAIL_MAX_AU = 4.0  # comets grow a visible tail inside roughly Jupiter's orbit

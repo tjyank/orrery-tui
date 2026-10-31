@@ -9,7 +9,7 @@ from .bodies import Body
 from .events import in_umbra
 from .kepler import AU_KM, Orbit, Vec3
 from .moons import Moon, pole_vector
-from .render import _BRAILLE, Camera, Canvas, Cell, Projector, SceneOptions, _draw_label, shade
+from .render import _BRAILLE, Camera, Canvas, Cell, Projector, SceneOptions, _draw_label, draw_trail, shade
 
 SYSTEM_EXTENT = 5.5  # display units from the planet to the outermost apoapsis at zoom 1
 MAX_CACHED_DISC_PX = 120  # larger planet discs are shaded per frame, clipped to the canvas
@@ -71,6 +71,7 @@ class SystemScene:
     opts: SceneOptions = field(default_factory=SceneOptions)
     sun_dist_au: float = 1e9  # shapes the shadow cone; the default is effectively a cylinder
     disc: tuple[float, float, float] | None = None  # set by draw_system: planet centre (col, row), radius (cols)
+    trails: dict[str, list[Vec3]] = field(default_factory=dict)  # display space, oldest point first
 
     def __post_init__(self) -> None:
         self.reach_km = system_reach_km(self.planet, self.moons)
@@ -146,6 +147,10 @@ def draw_system(canvas: Canvas, cam: Camera, sc: SystemScene) -> dict[str, tuple
             canvas.line(proj(d), foot, shade(moon.color, 0.35), hidden)
             if not hidden(*foot):
                 canvas.dot(foot[0], foot[1], shade(moon.color, 0.6), foot[2])
+
+    for moon in sc.moons:
+        if moon.key in sc.trails:
+            draw_trail(canvas, proj, sc.trails[moon.key], moon.color, hidden)
 
     _draw_planet(canvas, proj, sc, (pcx, pcy, pcd), r_disp, r_px)
 

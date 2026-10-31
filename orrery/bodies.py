@@ -117,6 +117,24 @@ SMALL_BODIES: list[Body] = [
 ORBITING: list[Body] = [*PLANETS, *SMALL_BODIES]  # everything with a heliocentric orbit
 ALL_BODIES: list[Body] = [SUN, *ORBITING]
 BY_KEY = {b.key: b for b in ALL_BODIES}
+USER_BODIES: list[Body] = []  # asteroids and comets the user looked up and added
+
+
+# Bodies added at run time join the lists above in place, so everything that iterates them (the
+# renderer, the Horizons fetch, the panels, Tab) picks them up without knowing they're new.
+def register(body: Body) -> None:
+    if body.key in BY_KEY:
+        raise ValueError(f"a body called {body.key!r} already exists")
+    for group in (SMALL_BODIES, ORBITING, ALL_BODIES, USER_BODIES):
+        group.append(body)
+    BY_KEY[body.key] = body
+
+
+def unregister(key: str) -> None:
+    body = BY_KEY.pop(key)
+    for group in (SMALL_BODIES, ORBITING, ALL_BODIES, USER_BODIES):
+        if body in group:
+            group.remove(body)
 
 J2000 = 2451545.0
 

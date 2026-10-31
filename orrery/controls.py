@@ -37,9 +37,12 @@ class Controls:
                 self.jump_to(target, preset.select, preset.system, preset.rate)
 
     def handle_menu(self, key: str) -> None:
-        if self.menu == "date":
+        if self.menu in ("date", "add"):  # the one-line text prompts
             if key == T.ESC:
                 self.menu = None
+            elif key == T.ENTER and self.menu == "add":
+                self.menu = None
+                self.start_lookup(self.prompt)
             elif key == T.ENTER:
                 self.menu = None
                 try:
@@ -97,6 +100,10 @@ class Controls:
         elif key in ("[", "]") and self.system:
             i = planets.index(self.system)
             self.enter_system(planets[(i + (1 if key == "]" else -1)) % len(planets)])
+        elif key == "/":
+            self.menu, self.prompt = "add", ""
+        elif key == "X":
+            self.remove_selected()
         elif key == "J":
             self.menu, self.menu_idx = "jump", 0
         elif key in (T.LEFT, "h"):
@@ -147,6 +154,14 @@ class Controls:
                 self.say("Selected body's orbit")
             else:
                 self.say("All orbits shown")
+        elif key == "T":
+            opts.show_trails = not opts.show_trails
+            if not opts.show_trails:
+                self.say("Trails off")
+            elif abs(RATES[self.rate_idx]) < 3_600:
+                self.say("Trails on: they show at faster time rates (press . a few times)")
+            else:
+                self.say("Trails on" + (": relative to the body you follow" if (self.sys_follow if self.system else self.follow) else ""))
         elif key == "d":
             opts.show_drops = not opts.show_drops
         elif key == "n":

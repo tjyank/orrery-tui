@@ -42,6 +42,8 @@ KEY_LEGEND = [
         ("f", "follow selected"),
         ("Enter / v", "open a planet's moons"),
         ("b", "small bodies on/off"),
+        ("/", "add an asteroid or comet"),
+        ("X", "remove one you added"),
     ]),
     ("Moon view", [
         ("Tab", "cycle moons"),
@@ -57,6 +59,7 @@ KEY_LEGEND = [
     ("Display", [
         ("o", "orbits: all, selected, none"),
         ("d n", "drop lines, names"),
+        ("T", "trails of recent motion"),
         ("p", "info panel"),
         ("?", "this legend"),
     ]),

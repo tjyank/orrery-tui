@@ -9,19 +9,21 @@ from datetime import datetime
 
 from . import settings
 from . import terminal as T
-from .bodies import BY_KEY, PLANETS
+from .bodies import ALL_BODIES, BY_KEY, PLANETS, USER_BODIES, register, unregister
 from .controls import Controls
 from .ephemeris import (EphemerisService, Snapshot, best_moon_snapshot, best_snapshot, jd_now, jd_to_datetime,
                         load_cache, offline_snapshot)
 from .events import light_time
 from .feeds import EventFeed, MIN_FETCH_GAP_S, MoonFeed, REANCHOR_DRIFT_DAYS, REFRESH_EVERY_S
 from .jumps import datetime_to_jd
-from .kepler import DAY_S, Vec3
+from .kepler import DAY_S, Vec3, orbit_from_state
+from .lookup import LookupFailed, LookupService, load_user_bodies, same_object, save_user_bodies
 from .moons import MOONS_OF
 from .overlays import Overlays
 from .panels import Panels
 from .render import Camera, Canvas, SCALE_ORDER, Scene, SceneOptions, draw_scene, to_display
 from .system import SystemScene, draw_system
+from .trails import build_trails
 from .ui import EVENT_ALERT_MAX_RATE, FLASH_S, JUMP_RESET_DAYS, MIN_PANEL_COLS, PANEL_W, RATES, REALTIME, vec_len, unit_vector
 
 
@@ -37,6 +39,8 @@ class App(Controls, Overlays, Panels):
         self.follow = False
         self.spin = False
         self.show_panel = True
+        load_user_bodies()  # objects added with / last time; before any data is loaded, so it includes them
+        self.lookups = LookupService()
         self.service = EphemerisService(allow_network=not args.offline)
         self.snapshot: Snapshot = load_cache(self.sim_jd) or offline_snapshot(self.sim_jd)
         self.last_fetch_request = -1e9
@@ -53,7 +57,7 @@ class App(Controls, Overlays, Panels):
         self.events = EventFeed()
         self.last_alert_jd = self.sim_jd
         # Jump menu (J) and its date prompt
-        self.menu: str | None = None  # None | "jump" | "date"
+        self.menu: str | None = None  # None | "jump" | "date" | "add"
         self.menu_idx = 0
         self.prompt = ""
         self.show_keys = False  # the ? legend; unlike the menu, keys keep working while it's open
@@ -81,10 +85,10 @@ class App(Controls, Overlays, Panels):
         c, s, o, so = self.cam, self.sys_cam, self.opts, self.sys_opts
         return {
             "yaw": c.yaw, "pitch": c.pitch, "zoom": c.zoom, "scale": o.scale_mode,
-            "orbits": o.show_orbits, "solo": o.solo_orbit, "drops": o.show_drops, "names": o.show_labels, "small": o.show_small,
+            "orbits": o.show_orbits, "solo": o.solo_orbit, "trails": o.show_trails, "drops": o.show_drops, "names": o.show_labels, "small": o.show_small,
             "selected": o.selected, "panel": self.show_panel, "spin": self.spin, "follow": self.follow,
             "sys_yaw": s.yaw, "sys_pitch": s.pitch, "sys_zoom": s.zoom, "sys_scale": so.scale_mode,
-            "sys_orbits": so.show_orbits, "sys_solo": so.solo_orbit, "sys_drops": so.show_drops,
+            "sys_orbits": so.show_orbits, "sys_solo": so.solo_orbit, "sys_trails": so.show_trails, "sys_drops": so.show_drops,
             "sys_names": so.show_labels,
         }
 
@@ -105,9 +109,10 @@ class App(Controls, Overlays, Panels):
             so.scale_mode = d["sys_scale"]
         if d.get("selected") in BY_KEY:
             o.selected = d["selected"]
-        for key, obj, attr in (("orbits", o, "show_orbits"), ("solo", o, "solo_orbit"), ("drops", o, "show_drops"),
+        for key, obj, attr in (("orbits", o, "show_orbits"), ("solo", o, "solo_orbit"), ("trails", o, "show_trails"),
+                               ("drops", o, "show_drops"),
                                ("names", o, "show_labels"), ("small", o, "show_small"),
-                               ("sys_orbits", so, "show_orbits"), ("sys_solo", so, "solo_orbit"),
+                               ("sys_orbits", so, "show_orbits"), ("sys_solo", so, "solo_orbit"), ("sys_trails", so, "show_trails"),
                                ("sys_drops", so, "show_drops"), ("sys_names", so, "show_labels"),
                                ("panel", self, "show_panel"), ("spin", self, "spin"), ("follow", self, "follow")):
             if key in d:
@@ -137,8 +142,53 @@ class App(Controls, Overlays, Panels):
         if not MOONS_OF[planet]:
             self.say(f"{BY_KEY[planet].name} has no moons")
 
-    def say(self, text: str) -> None:
-        self.flash, self.flash_until = text, time.monotonic() + FLASH_S
+    def say(self, text: str, seconds: float = FLASH_S) -> None:
+        self.flash, self.flash_until = text, time.monotonic() + seconds
+
+    # ---- objects the user adds (/) and removes (X) ----------------------------------------
+    def start_lookup(self, query: str) -> None:
+        if not query.strip():
+            return
+        if self.args.offline:
+            self.say("Looking objects up needs JPL Horizons; the app was started with --offline")
+        elif not self.lookups.start(query.strip(), self.sim_jd):
+            self.say("Still looking up the last one")
+
+    def finish_lookup(self) -> None:
+        result = self.lookups.take()
+        if result is None:
+            return
+        if isinstance(result, LookupFailed):
+            self.say(str(result), seconds=10)
+            return
+        body = same_object(result.body)
+        if body is None:
+            body = result.body
+            register(body)
+            # Into the current data straight away; the next Horizons refresh includes it as well.
+            self.snapshot.orbits[body.key] = orbit_from_state(*result.state, epoch=result.jd, mu=body.mu)
+            save_user_bodies()
+            self.say(f"Added {body.name} ({body.type_name.lower()}). X removes it", seconds=6)
+        else:
+            self.say(f"{body.name} is already shown")
+        self.system = None
+        self.opts.selected = body.key
+        if body.small:
+            self.opts.show_small = True
+
+    def remove_selected(self) -> None:
+        key = self.active_opts.selected
+        body = BY_KEY.get(key)
+        if self.system or body not in USER_BODIES:
+            self.say("Only an asteroid or comet you added with / can be removed")
+            return
+        keys = [b.key for b in ALL_BODIES]
+        self.opts.selected = keys[keys.index(key) - 1]  # the previous body in the list
+        self.follow = False
+        unregister(key)
+        self.snapshot.orbits.pop(key, None)
+        save_user_bodies()
+        self.say(f"Removed {body.name}")
 
     # ---- data -------------------------------------------------------------------------
     def request_data(self, force: bool = False) -> None:
@@ -149,6 +199,7 @@ class App(Controls, Overlays, Panels):
             self.last_fetch_request = now
 
     def poll_data(self) -> None:
+        self.finish_lookup()
         snap = self.service.take()
         if snap is not None:
             self.snapshot = snap
@@ -245,6 +296,8 @@ class App(Controls, Overlays, Panels):
                              unit_vector((-p[0], -p[1], -p[2])), self.sys_opts, sun_dist_au=vec_len(p))
             sel = self.sys_opts.selected
             self.sys_cam.target = sc.disp(moon_pos[sel]) if self.sys_follow and sel in moon_pos else (0.0, 0.0, 0.0)
+            if self.sys_opts.show_trails:
+                sc.trails = self._moon_trails(feed, orbits, sc, self.sim_jd - delay)
             hits = draw_system(scene, self.sys_cam, sc)
             cx, cy, rc = sc.disc
             self.disc = (cx, cy + 1, rc)  # in terminal cells: the scene starts on row 1
@@ -252,7 +305,8 @@ class App(Controls, Overlays, Panels):
         else:
             target = to_display(pos[self.opts.selected], self.opts.scale_mode) if self.follow else (0.0, 0.0, 0.0)
             self.cam.target = target
-            hits = draw_scene(scene, self.cam, Scene(pos, self.snapshot.orbits, self.opts))
+            trails = self._trails() if self.opts.show_trails else {}
+            hits = draw_scene(scene, self.cam, Scene(pos, self.snapshot.orbits, self.opts, trails))
             info = (lambda n: self._panel(n, pos)) if panel else None
         self.hits = {k: (c, r + 1) for k, (c, r) in hits.items()}  # the scene starts on terminal row 1
         self.labels = [(r + 1, c0, c1, key) for r, c0, c1, key in scene.labels]
@@ -269,6 +323,33 @@ class App(Controls, Overlays, Panels):
         return out
 
     # ---- main loop --------------------------------------------------------------------
+    def _trails(self) -> dict:
+        """Trails for the bodies shown, in the frame of the body being followed (if any)."""
+        orbits, mode, o = self.snapshot.orbits, self.opts.scale_mode, self.opts
+        followed = o.selected if self.follow and o.selected in orbits else None
+        keys = [b.key for b in ALL_BODIES if b.key in orbits and b.key != followed
+                and (o.show_small or not b.small or b.key == o.selected)]
+
+        def position(key: str, t: float) -> Vec3:
+            return to_display(orbits[key].position(t), mode)
+
+        frame = (lambda t: position(followed, t)) if followed else None
+        return build_trails(keys, self.sim_jd, RATES[self.rate_idx], position,
+                            lambda k: orbits[k].period_days, frame)
+
+    def _moon_trails(self, feed, orbits, sc: SystemScene, now: float) -> dict:
+        """Moon trails, as Earth sees them (`now` includes the light delay), in the followed moon's frame."""
+        sel = self.sys_opts.selected
+        followed = sel if self.sys_follow and sel in orbits else None
+
+        def position(key: str, t: float) -> Vec3:
+            # Earth's Moon comes from the lunar theory; other moons from their orbits.
+            return sc.disp(feed.positions(t)[key] if feed.analytic else orbits[key].position(t))
+
+        frame = (lambda t: position(followed, t)) if followed else None
+        keys = [m.key for m in MOONS_OF[self.system] if m.key in orbits and m.key != followed]
+        return build_trails(keys, now, RATES[self.rate_idx], position, lambda k: orbits[k].period_days, frame)
+
     def _view_state(self, size: tuple[int, int]) -> tuple:
         """Everything a frame depends on: while this is unchanged, so is the frame.
 
@@ -285,7 +366,7 @@ class App(Controls, Overlays, Panels):
             self.flash if time.monotonic() < self.flash_until else None,
             id(self.snapshot), self.service.busy, self.service.progress,
             feed and (id(feed.snapshot), feed.service.busy, feed.service.progress),
-            self.events.key, len(self.events.events), self.events.busy,
+            self.events.key, len(self.events.events), self.events.busy, self.lookups.query, len(ALL_BODIES),
         )
 
     def run(self) -> None:

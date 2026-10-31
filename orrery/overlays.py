@@ -15,6 +15,11 @@ class Overlays:
             lines = ["A UTC date, or an offset from the time shown", "", f"> {self.prompt}_", "",
                      "e.g.  2061-07-28   1989-08-25 03:56   +30d   -2y", "units: h d w m y",
                      "", "Enter to jump, Esc to cancel"]
+        elif self.menu == "add":
+            title = "ADD AN ASTEROID OR COMET"
+            lines = ["Its name, number or designation, as JPL Horizons knows it", "", f"> {self.prompt}_", "",
+                     "e.g.  Apophis   Bennu   433   Hale-Bopp   2P   C/2021 S4",
+                     "", "Enter to look it up, Esc to cancel"]
         else:
             title = "JUMP TO"
             items = self.menu_items()

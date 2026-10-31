@@ -41,6 +41,7 @@ On macOS/Linux, use `.venv/bin/...`. It needs Python 3.10+ and a truecolor termi
 | `m` | cycle the distance scale: log → sqrt → linear |
 | `o` | cycle the orbits: all → only the selected body's → none |
 | `d` `n` | toggle drop lines to the ecliptic, and names |
+| `T` | trails: where each body has recently been |
 | `a` | auto-spin the camera |
 | `p` | toggle the info panel |
 | `?` | show or hide the key legend |
@@ -48,6 +49,8 @@ On macOS/Linux, use `.venv/bin/...`. It needs Python 3.10+ and a truecolor termi
 | `Enter` / `v` | open the selected planet's moon system view |
 | `J` | jump menu: a typed date or offset, or a preset moment |
 | `b` | show or hide dwarf planets, asteroids and comets |
+| `/` | add any asteroid or comet, by name or designation |
+| `X` | remove the selected object you added |
 | `q` / `Esc` | quit |
 
 ### Mouse
@@ -61,6 +64,18 @@ Drag to rotate and tilt, scroll to zoom, and click a body or its name to select 
 ### Small bodies
 
 Ceres, Haumea, Makemake and Eris, Pallas and Vesta, and the comets Halley, Encke and 67P/Churyumov–Gerasimenko. They're drawn smaller, with fainter orbits, and comets grow a tail pointing away from the Sun inside about 4 au. For eccentric orbits the panel adds perihelion distance and date. `b` hides them all. Their orbits change slowly, so routine refreshes skip them: they're re-fetched once simulated time is 10 days from their data.
+
+### Trails
+
+`T` draws a fading trail behind each body: where it has been over the last 15 seconds of real time, at the current speed. At real time that's too short to see, so speed time up with `.` (at 1 week/s a trail covers about 15 weeks). The dots are evenly spaced in time, so speed shows: Mercury's dots spread out as it swings close to the Sun. Without a followed body, a trail stops short of a full orbit.
+
+Follow a body (`f`) and the trails are drawn as seen from it. Follow Earth and the outer planets trace retrograde loops, the backward wanderings ancient astronomers saw in the sky. The moon view has trails too, toggled separately.
+
+### Adding any asteroid or comet
+
+Press `/` and type a name, number or designation as JPL Horizons knows it: `Apophis`, `Bennu`, `433` (Eros), `Hale-Bopp`, `2P`, `C/2021 S4`. The lookup runs in the background, and the object is added, selected and drawn like the built-in small bodies. It's remembered between runs (in `bodies.json`, next to the settings file), refreshed from Horizons with the other small bodies, and has an offline orbit too. `X` removes the selected one.
+
+If a name matches several objects, the footer lists their designations so you can type the one you mean. For a periodic comet, the apparition nearest the current date is used. Objects on open orbits, passing through the solar system once (such as interstellar visitors and some new comets), can't be drawn yet, and the footer says so.
 
 ### Remembered settings
 

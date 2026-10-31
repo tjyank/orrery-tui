@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from .bodies import BY_KEY, ORBITING, approximate_orbit
+from .bodies import BY_KEY, ORBITING, PLANETS, SMALL_BODIES, approximate_orbit
 from .kepler import Orbit, orbit_from_state
 from .moons import MOONS_OF, mean_moon_orbit
 
@@ -88,11 +88,15 @@ class Snapshot:
         }[self.source]
 
 
-def _fetch_state(horizons_id: str, name: str, jd: float, timeout: float, center: str = "10",
-                 retries: int = 3) -> tuple[tuple, tuple]:
+def query_vectors(command: str, jd: float, timeout: float = 20.0, center: str = "10", object_data: bool = False,
+                  retries: int = 3) -> dict:
+    """One Horizons VECTORS request (ecliptic J2000, au and au/day); returns the JSON reply.
+
+    With `object_data`, the reply also describes the body (its name, radius and so on).
+    """
     params = {
         "format": "json",
-        "COMMAND": f"'{horizons_id}'",
+        "COMMAND": f"'{command}'",
         "EPHEM_TYPE": "VECTORS",
         "CENTER": f"'500@{center}'",  # body centre (the Sun unless asked otherwise)
         "REF_PLANE": "ECLIPTIC",
@@ -102,7 +106,7 @@ def _fetch_state(horizons_id: str, name: str, jd: float, timeout: float, center:
         "VEC_TABLE": "2",
         "OUT_UNITS": "AU-D",
         "CSV_FORMAT": "YES",
-        "OBJ_DATA": "NO",
+        "OBJ_DATA": "YES" if object_data else "NO",
         "MAKE_EPHEM": "YES",
     }
     url = f"{HORIZONS_URL}?{urllib.parse.urlencode(params)}"
@@ -110,13 +114,17 @@ def _fetch_state(horizons_id: str, name: str, jd: float, timeout: float, center:
     for attempt in range(retries + 1):
         try:
             with _HORIZONS_LOCK, urllib.request.urlopen(req, timeout=timeout) as resp:
-                payload = json.load(resp)
-            break
+                return json.load(resp)
         except urllib.error.HTTPError as exc:  # Horizons answers 503 when busy
             if exc.code != 503 or attempt == retries:
                 raise
             time.sleep(1.5 * (attempt + 1))
-    return parse_vectors(payload, name)
+    raise AssertionError("unreachable")
+
+
+def _fetch_state(horizons_id: str, name: str, jd: float, timeout: float, center: str = "10",
+                 retries: int = 3) -> tuple[tuple, tuple]:
+    return parse_vectors(query_vectors(horizons_id, jd, timeout, center, retries=retries), name)
 
 
 def parse_vectors(payload: dict, name: str) -> tuple[tuple, tuple]:
@@ -133,8 +141,7 @@ def parse_vectors(payload: dict, name: str) -> tuple[tuple, tuple]:
     return (x, y, z), (vx, vy, vz)
 
 
-PLANET_BODIES = [b for b in ORBITING if not b.small]
-SMALL_BODIES = [b for b in ORBITING if b.small]
+PLANET_BODIES = PLANETS  # SMALL_BODIES is the live list from bodies: objects the user adds join it
 
 
 def fetch_horizons(jd: float, timeout: float = 20.0, progress=None, publish=None) -> Snapshot:
@@ -144,7 +151,8 @@ def fetch_horizons(jd: float, timeout: float = 20.0, progress=None, publish=None
     from the cache or the offline model), so the view updates before the slower second stage.
     """
     small_cached = _load_small_states()
-    need_small = small_cached is None or abs(jd - small_cached[0]) > SMALL_BODY_REFRESH_DAYS
+    need_small = (small_cached is None or abs(jd - small_cached[0]) > SMALL_BODY_REFRESH_DAYS
+                  or any(b.key not in small_cached[1] for b in SMALL_BODIES))  # e.g. one just added
     total = len(PLANET_BODIES) + (len(SMALL_BODIES) if need_small else 0)
     states = {}
     for n, body in enumerate(PLANET_BODIES):
