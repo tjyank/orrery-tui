@@ -1,5 +1,7 @@
 # orrery-tui
 
+https://github.com/user-attachments/assets/dd376fb0-338d-4f55-b933-c671a1648623
+
 A live, isometric, rotatable model of the solar system in your terminal.
 
 Planet positions come from **NASA/JPL Horizons**. Each state vector is turned into an osculating Keplerian orbit. When the simulated time drifts more than 20 days from the data epoch, the app fetches fresh data in the background.
