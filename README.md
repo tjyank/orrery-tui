@@ -73,8 +73,6 @@ Ceres, Haumea, Makemake and Eris, Pallas and Vesta, and the comets Halley, Encke
 
 Press `/` and type a name, number or designation as JPL Horizons knows it: `Apophis`, `Bennu`, `433`, `Hale-Bopp`, `2P`, `C/2021 S4`. The lookup runs in the background, and the object is added, selected and drawn like the built-in small bodies.
 
-If a name matches several objects, the footer lists their designations so you can type the one you mean. For a periodic comet, the apparition nearest the current date is used. Objects on open orbits, passing through the solar system once (such as interstellar visitors and some new comets), can't be drawn yet, and the footer says so.
-
 ### Remembered settings
 
 The camera, zoom, scale, toggles and selection for both views are saved on quit and restored next time, in `%APPDATA%\orrery\settings.json` on Windows or `~/.config/orrery/settings.json` elsewhere. `--scale` still overrides the saved scale, and `--fresh` starts from the defaults.
