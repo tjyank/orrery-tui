@@ -20,7 +20,7 @@ On macOS/Linux, use `.venv/bin/...`. It needs Python 3.10+ and a truecolor termi
 |---|---|
 | `--scale log\|sqrt\|linear` | radial distance compression |
 | `--date 1977-09-05` | start at a UTC date/time instead of now |
-| `--offline` | never contact Horizons: use the last cached fetch, or the built-in orbits (JPL's approximate elements, accurate for 1800–2050) |
+| `--offline` | never contact Horizons: use the last cached fetch, or the built-in orbits |
 | `--ascii` | ASCII glyphs for bodies, for terminals with poor Unicode fonts |
 | `--once --size 140x40` | print a single frame and exit |
 | `--system jupiter` | start in a planet's moon system view |
