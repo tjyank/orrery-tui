@@ -6,15 +6,18 @@ A live, isometric, rotatable model of the solar system in your terminal.
 
 Planet positions come from **NASA/JPL Horizons**. Each state vector is turned into an osculating Keplerian orbit. When the simulated time drifts more than 20 days from the data epoch, the app fetches fresh data in the background.
 
-## Run
+## Install
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\pip install -e .
-.\.venv\Scripts\orrery            # or: python -m orrery
+```
+pip install orrery-tui
+orrery
 ```
 
-On macOS/Linux, use `.venv/bin/...`. It needs Python 3.10+ and a truecolor terminal. Windows Terminal, iTerm2, kitty, WezTerm and most modern Linux terminals all work.
+Or with [pipx](https://pipx.pypa.io/), which keeps command-line apps in their own environments: `pipx install orrery-tui`. If `orrery` isn't found after a plain `pip install`, run `python -m orrery` instead.
+
+It needs Python 3.10+ and a truecolor terminal. Windows Terminal, iTerm2, kitty, WezTerm and most modern Linux terminals all work.
+
+To work on the code instead, clone the repo and install it in editable mode with the test tools: `pip install -e ".[dev]"`, then run `python -m pytest`.
 
 | Option | |
 |---|---|
@@ -90,3 +93,14 @@ Opening a planet with `Enter` shows it at the centre with its moons on their rea
 | `f` | follow the selected moon |
 | `m` | cycle the distance scale: log  → sqrt → linear |
 | `Esc` / `Enter` / `v` | back to the solar system |
+
+## Releasing
+
+Pushing a version tag publishes to PyPI (`.github/workflows/publish.yml`): bump `version` in `pyproject.toml`, commit, then
+
+```
+git tag v0.1.1
+git push origin main v0.1.1
+```
+
+The workflow runs the tests, checks that the tag matches the version, builds, and uploads with PyPI's trusted publishing, so no token is stored anywhere.
