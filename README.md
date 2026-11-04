@@ -1,5 +1,7 @@
 # orrery-tui
 
+<img width="800" height="448" alt="m2-res_1076p-ezgif com-video-to-gif-converter (1)" src="https://github.com/user-attachments/assets/1491e6bc-bd6e-4d74-905f-ad5deca71704" />
+
 A live, isometric, rotatable model of the solar system in your terminal.
 
 Planet positions come from **NASA/JPL Horizons**. Each state vector is turned into an osculating Keplerian orbit. When the simulated time drifts more than 20 days from the data epoch, the app fetches fresh data in the background.
@@ -18,7 +20,7 @@ On macOS/Linux, use `.venv/bin/...`. It needs Python 3.10+ and a truecolor termi
 |---|---|
 | `--scale log\|sqrt\|linear` | radial distance compression |
 | `--date 1977-09-05` | start at a UTC date/time instead of now |
-| `--offline` | never contact Horizons: use the last cached fetch, or the built-in orbits (JPL's approximate elements, accurate for 1800–2050) |
+| `--offline` | never contact Horizons: use the last cached fetch, or the built-in orbits |
 | `--ascii` | ASCII glyphs for bodies, for terminals with poor Unicode fonts |
 | `--once --size 140x40` | print a single frame and exit |
 | `--system jupiter` | start in a planet's moon system view |
@@ -73,15 +75,13 @@ Ceres, Haumea, Makemake and Eris, Pallas and Vesta, and the comets Halley, Encke
 
 Press `/` and type a name, number or designation as JPL Horizons knows it: `Apophis`, `Bennu`, `433`, `Hale-Bopp`, `2P`, `C/2021 S4`. The lookup runs in the background, and the object is added, selected and drawn like the built-in small bodies.
 
-If a name matches several objects, the footer lists their designations so you can type the one you mean. For a periodic comet, the apparition nearest the current date is used. Objects on open orbits, passing through the solar system once (such as interstellar visitors and some new comets), can't be drawn yet, and the footer says so.
-
 ### Remembered settings
 
 The camera, zoom, scale, toggles and selection for both views are saved on quit and restored next time, in `%APPDATA%\orrery\settings.json` on Windows or `~/.config/orrery/settings.json` elsewhere. `--scale` still overrides the saved scale, and `--fresh` starts from the defaults.
 
 ### Planetary system view
 
-Opening a planet with `Enter` shows it at the centre, lit from the Sun's direction, with its moons on their real orbits. The `N` axis is its north pole, showing its tilt, and the ☼ marker at the edge points to the Sun. Moons in the planet's shadow are drawn dimmed. Rotate, tilt, zoom, time and the `o d n a i p` toggles work as in the main view; the camera is kept separate from the main one.
+Opening a planet with `Enter` shows it at the centre with its moons on their real orbits. The `N` axis is its north pole, showing its tilt, and the ☼ marker at the edge points to the Sun. Moons in the planet's shadow are drawn dimmed. Rotate, tilt, zoom, time and the `o d n a i p` toggles work as in the main view; the camera is kept separate from the main one.
 
 | Key | Action |
 |---|---|
