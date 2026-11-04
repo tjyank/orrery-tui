@@ -81,7 +81,7 @@ The camera, zoom, scale, toggles and selection for both views are saved on quit 
 
 ### Planetary system view
 
-Opening a planet with `Enter` shows it at the centre, lit from the Sun's direction, with its moons on their real orbits. The `N` axis is its north pole, showing its tilt, and the ☼ marker at the edge points to the Sun. Moons in the planet's shadow are drawn dimmed. Rotate, tilt, zoom, time and the `o d n a i p` toggles work as in the main view; the camera is kept separate from the main one.
+Opening a planet with `Enter` shows it at the centre with its moons on their real orbits. The `N` axis is its north pole, showing its tilt, and the ☼ marker at the edge points to the Sun. Moons in the planet's shadow are drawn dimmed. Rotate, tilt, zoom, time and the `o d n a i p` toggles work as in the main view; the camera is kept separate from the main one.
 
 | Key | Action |
 |---|---|
