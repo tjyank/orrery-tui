@@ -1,6 +1,6 @@
 # orrery-tui
 
-<img width="800" height="448" alt="m2-res_1076p-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/a6f14b07-21c5-474a-96f2-4a4c1e76082e" />
+<img width="800" height="448" alt="m2-res_1076p-ezgif com-video-to-gif-converter (1)" src="https://github.com/user-attachments/assets/1491e6bc-bd6e-4d74-905f-ad5deca71704" />
 
 A live, isometric, rotatable model of the solar system in your terminal.
 
