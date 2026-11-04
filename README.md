@@ -93,14 +93,3 @@ Opening a planet with `Enter` shows it at the centre with its moons on their rea
 | `f` | follow the selected moon |
 | `m` | cycle the distance scale: log  → sqrt → linear |
 | `Esc` / `Enter` / `v` | back to the solar system |
-
-## Releasing
-
-Pushing a version tag publishes to PyPI (`.github/workflows/publish.yml`): bump `version` in `pyproject.toml`, commit, then
-
-```
-git tag v0.1.1
-git push origin main v0.1.1
-```
-
-The workflow runs the tests, checks that the tag matches the version, builds, and uploads with PyPI's trusted publishing, so no token is stored anywhere.
