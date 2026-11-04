@@ -1,0 +1,3 @@
+# Ship the whole test suite in the source package, including conftest.py, which keeps the tests
+# away from a user's real settings, cache and added objects.
+recursive-include tests *.py

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]  # 77+ reads the SPDX `license` expression below
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,10 +7,34 @@ name = "orrery-tui"
 version = "0.1.0"
 description = "Live isometric solar system in your terminal, driven by NASA/JPL Horizons ephemerides"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Thomas Yankelevich" }]
 requires-python = ">=3.10"
 dependencies = [
     "truststore>=0.9",  # use the OS certificate store for HTTPS (corporate proxies, Windows)
 ]
+keywords = ["orrery", "solar system", "astronomy", "terminal", "tui", "ephemeris", "jpl horizons", "planets"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Topic :: Terminals",
+]
+
+[project.urls]
+Homepage = "https://github.com/tjyank/orrery-tui"
+Repository = "https://github.com/tjyank/orrery-tui"
+Issues = "https://github.com/tjyank/orrery-tui/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
