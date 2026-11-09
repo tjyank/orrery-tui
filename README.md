@@ -64,7 +64,7 @@ Drag to rotate and tilt, scroll to zoom, and click a body or its name to select 
 
 ### Jumping in time
 
-`J` opens a menu: jump to now, type a UTC date or an offset from the time shown (`+30d`, `-2y`; units `h d w m y`), or pick a preset. The presets are the next total solar eclipse, next lunar eclipse, next Mars and Jupiter oppositions, Halley's next perihelion, and moments like Apollo 11's landing and Voyager 2 at Neptune. After a long jump the app switches straight to the offline model, while Horizons loads data for the new date. That model is accurate for 1800–2050; outside that range, positions are only rough until the live data arrives.
+`J` opens a menu: jump to now, type a UTC date or an offset from the time shown (`+30d`, `-2y`; units `h d w m y`). The presets are the next total solar eclipse, next lunar eclipse, next Mars and Jupiter oppositions, Halley's next perihelion, and moments like Apollo 11's landing and Voyager 2 at Neptune. After a long jump the app switches straight to the offline model, while Horizons loads data for the new date. That model is accurate for 1800–2050; outside that range, positions are only rough until the live data arrives.
 
 ### Small bodies
 
