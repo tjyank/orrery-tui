@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .bodies import BY_KEY, J2000, USER_BODIES, Body, register
 from .ephemeris import _write_json_atomic, parse_vectors, query_vectors
-from .kepler import orbit_from_state
+from .kepler import DegenerateStateError, orbit_from_state
 from .settings import settings_path
 
 ASTEROID_COLOR = (196, 182, 160)
@@ -124,6 +124,8 @@ def lookup(query: str, jd: float, timeout: float = 30.0) -> Found:
         raise LookupFailed(f"Horizons couldn't give a position for {full!r}") from exc
     try:
         orbit = orbit_from_state(*state, epoch=jd)
+    except DegenerateStateError:
+        raise LookupFailed(f"Horizons couldn't give a position for {full!r}") from None
     except ValueError:
         raise LookupFailed(f"{short_name(full)} isn't on a closed orbit: it's passing through the solar "
                            "system, which this orrery can't draw yet") from None

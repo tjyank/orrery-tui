@@ -1,7 +1,9 @@
 import math
 
+import pytest
+
 from orrery.bodies import BY_KEY, PLANETS, approximate_orbit
-from orrery.kepler import GM_SUN, orbit_from_state
+from orrery.kepler import DegenerateStateError, GM_SUN, orbit_from_state
 from orrery.render import ISO_PITCH, Camera, Canvas, Scene, draw_scene, to_display
 
 JD = 2461340.5  # 2026-10-27 00:00 TDB
@@ -21,6 +23,18 @@ def test_state_roundtrip():
     assert _dist(r, EARTH_R) < 1e-10
     assert _dist(v, EARTH_V) < 1e-12
     assert abs(orbit.a - 1.0) < 0.02 and orbit.e < 0.03
+
+
+def test_orbit_from_state_rejects_degenerate_vectors():
+    # Zero position: used to raise ZeroDivisionError.
+    with pytest.raises(DegenerateStateError, match="zero position"):
+        orbit_from_state((0.0, 0.0, 0.0), (0.01, 0.0, 0.0), JD)
+    # Zero velocity (and radial infall): no orbital plane; used to raise
+    # ZeroDivisionError instead of an error the caller can report.
+    with pytest.raises(DegenerateStateError, match="zero angular momentum"):
+        orbit_from_state((1.0, 0.0, 0.0), (0.0, 0.0, 0.0), JD)
+    with pytest.raises(DegenerateStateError, match="zero angular momentum"):
+        orbit_from_state((1.0, 0.0, 0.0), (-0.01, 0.0, 0.0), JD)
 
 
 def test_roundtrip_inclined_eccentric():

@@ -82,6 +82,7 @@ def test_comet_apparitions_use_the_nearest(horizons):
     (NO_MATCH, "No asteroid or comet called"),
     ({"error": "Bad request"}, "Horizons: Bad request"),
     (reply("Fast (C/2023 A3)", vx=0.5, vy=0.5), "isn't on a closed orbit"),  # far above escape speed
+    (reply("Ghost Rock", x=0, y=0, vx=0, vy=0), "couldn't give a position"),  # degenerate state
 ])
 def test_lookups_that_cannot_add(horizons, answer, message):
     answers, _ = horizons

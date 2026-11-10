@@ -24,6 +24,15 @@ def _norm(a: Vec3) -> float:
     return math.sqrt(_dot(a, a))
 
 
+class DegenerateStateError(ValueError):
+    """A state vector with no valid orbit: zero position or zero angular momentum.
+
+    A subclass of `ValueError` so existing handlers keep working; callers that
+    can report the problem (like `lookup`) should catch it separately from the
+    unbound-orbit case.
+    """
+
+
 def solve_kepler(m: float, e: float) -> float:
     """Eccentric anomaly E for mean anomaly M (radians), elliptic orbits."""
     m = math.remainder(m, math.tau)
@@ -104,8 +113,12 @@ def _path(orbit: Orbit, samples: int) -> tuple[Vec3, ...]:
 def orbit_from_state(r: Vec3, v: Vec3, epoch: float, mu: float = GM_SUN) -> Orbit:
     """Osculating elements from a heliocentric ecliptic state vector (au, au/day)."""
     rn, v2 = _norm(r), _dot(v, v)
+    if rn == 0.0:
+        raise DegenerateStateError("degenerate state vector: zero position")
     h = _cross(r, v)
     hn = _norm(h)
+    if hn == 0.0:
+        raise DegenerateStateError("degenerate state vector: zero angular momentum")
     rv = _dot(r, v)
     evec = tuple(((v2 - mu / rn) * r[k] - rv * v[k]) / mu for k in range(3))
     e = _norm(evec)
