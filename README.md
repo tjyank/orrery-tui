@@ -72,7 +72,7 @@ Ceres, Haumea, Makemake and Eris, Pallas and Vesta, and the comets Halley, Encke
 
 ### Trails
 
-`T` draws a fading trail behind each body: where it has been over the last 15 seconds of real time, at the current speed. At real time that's too short to see, so speed time up with `.` The dots are evenly spaced in time, so speed shows: Mercury's dots spread out as it swings close to the Sun. Without a followed body, a trail stops short of a full orbit.
+`T` draws a fading trail behind each body: where it has been over the last 15 seconds of real time, at the current speed. At real time that's too short to see, so speed time up with `.`. Without a followed body, a trail stops short of a full orbit.
 
 ### Adding any asteroid or comet
 
