@@ -63,6 +63,10 @@ KEY_LEGEND = [
         ("p", "info panel"),
         ("?", "this legend"),
     ]),
+    ("Stars", [
+        ("S", "map of the nearest stars"),
+        ("Esc S", "back to the planets"),
+    ]),
     ("Mouse", [
         ("drag", "rotate and tilt"),
         ("scroll", "zoom"),

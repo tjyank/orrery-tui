@@ -87,10 +87,13 @@ def windows(f, t0: float, t1: float, step: float) -> list[tuple[float | None, fl
     vs = [f(t) for t in ts]
     # A dip shorter than a sample step can hide between two positive samples: look at every local
     # minimum of the samples, and add its true minimum to the samples if that goes negative.
+    # The two ends count too, so a dip between t0 and the first sample (or the last sample and t1)
+    # isn't lost: searching just ahead of an opposition or eclipse must still find it.
     extra = []
-    for i in range(1, n):
-        if vs[i] >= 0 and vs[i] <= vs[i - 1] and vs[i] <= vs[i + 1]:
-            tm, vm = _golden_min(f, ts[i - 1], ts[i + 1])
+    for i in range(n + 1):
+        lo, hi = max(i - 1, 0), min(i + 1, n)
+        if vs[i] >= 0 and vs[i] <= vs[lo] and vs[i] <= vs[hi]:
+            tm, vm = _golden_min(f, ts[lo], ts[hi])
             if vm < 0:
                 extra.append((tm, vm))
     if extra:

@@ -70,6 +70,16 @@ def jd_to_datetime(jd: float) -> datetime:
     return _UNIX_EPOCH + timedelta(days=jd - 2440587.5)
 
 
+# Simulated time stays where dates can be shown (datetime spans years 1-9999), with a margin for
+# what is shown ahead of it: upcoming events, a long-period body's next perihelion.
+JD_MIN = 1721426.5  # 0001-01-02
+JD_MAX = 5368130.5  # 9985-05-05
+
+
+def clamp_jd(jd: float) -> float:
+    return max(JD_MIN, min(JD_MAX, jd))
+
+
 @dataclass
 class Snapshot:
     orbits: dict[str, Orbit]

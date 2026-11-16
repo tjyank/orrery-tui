@@ -242,8 +242,11 @@ class Panels:
                 ("Period", f"{orbit.period_days / 365.25:.3f} yr"),
             ]
             if orbit.e > 0.1:
-                peri = jd_to_datetime(next_perihelion(orbit, self.sim_jd))
-                lines += [("Perihelion", f"{orbit.a * (1 - orbit.e):.3f} au"), ("Next peri.", f"{peri:%Y-%m-%d}")]
+                try:
+                    peri = f"{jd_to_datetime(next_perihelion(orbit, self.sim_jd)):%Y-%m-%d}"
+                except OverflowError:  # a long orbit, near the end of the calendar
+                    peri = "after 9999"
+                lines += [("Perihelion", f"{orbit.a * (1 - orbit.e):.3f} au"), ("Next peri.", peri)]
             lines.append(("Radius", radius_text(body.radius_km)))
             if MOONS_OF.get(body.key):
                 lines.append(("Moons", f"{len(MOONS_OF[body.key])}  (Enter to view)"))

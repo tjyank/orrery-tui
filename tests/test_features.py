@@ -385,3 +385,37 @@ def test_o_cycles_all_then_only_the_followed_orbit_then_none():
     app.sys_opts.selected = "io"
     app.handle("o")
     assert app.sys_opts.solo_orbit and app.flash == "Selected body's orbit"
+
+
+def test_windows_finds_a_dip_right_at_the_ends():
+    # Dips between t0 and the first sample, and between the last sample and t1.
+    (start, end, peak), = windows(lambda t: abs(t - 1.0) - 0.1, 0, 20, 5.0)
+    assert abs(start - 0.9) < 1e-6 and abs(end - 1.1) < 1e-6 and abs(peak - 1.0) < 1e-4
+    (start, end, peak), = windows(lambda t: abs(t - 19.0) - 0.1, 0, 20, 5.0)
+    assert abs(peak - 19.0) < 1e-4
+
+
+def test_next_opposition_a_day_away_is_not_skipped():
+    pos = lambda k, t: approximate_orbit(BY_KEY[k], t).position(t)  # noqa: E731
+    op = next_opposition(pos, "mars", JD)
+    assert abs(next_opposition(pos, "mars", op - 1.0) - op) < 1e-3
+
+
+def test_jumps_beyond_the_calendar_are_refused_and_change_nothing():
+    import argparse
+    from orrery.app import App
+
+    app = App(argparse.Namespace(offline=True, scale=None, date=None, ascii=False, once=True, size=None,
+                                 system=None, fresh=True, no_mouse=False))
+    before = app.sim_jd
+    app.handle("J")
+    app.choose(1)  # "Type a date or offset…"
+    for ch in "+8000y":
+        app.handle(ch)
+    app.handle(ENTER)
+    assert app.sim_jd == before and "out of range" in app.flash
+    app.frame(120, 40)  # the header still formats the date
+
+    app.handle("J")
+    app.handle("²")  # isdigit(), but not a number int() reads: must not raise
+    assert app.menu == "jump"

@@ -27,6 +27,7 @@ To work on the code instead, clone the repo and install it in editable mode with
 | `--ascii` | ASCII glyphs for bodies, for terminals with poor Unicode fonts |
 | `--once --size 140x40` | print a single frame and exit |
 | `--system jupiter` | start in a planet's moon system view |
+| `--stars` | start in the map of the nearest stars |
 | `--fresh` | ignore remembered view settings, and don't save them |
 | `--no-mouse` | don't capture the mouse |
 
@@ -56,6 +57,7 @@ To work on the code instead, clone the repo and install it in editable mode with
 | `b` | show or hide dwarf planets, asteroids and comets |
 | `/` | add any asteroid or comet, by name or designation |
 | `X` | remove the selected object you added |
+| `S` | the star map: the nearest stars around the Sun |
 | `q` / `Esc` | quit |
 
 ### Mouse
@@ -93,3 +95,46 @@ Opening a planet with `Enter` shows it at the centre with its moons on their rea
 | `f` | follow the selected moon |
 | `m` | cycle the distance scale: log  → sqrt → linear |
 | `Esc` / `Enter` / `v` | back to the solar system |
+
+## The star map
+
+`S` zooms out from the planets to the stars around the Sun: about 50 star systems within 20 light years at their real 3D positions in galactic coordinates, plus bright landmarks further out such as Vega, Arcturus and Aldebaran. `Esc` or `S` goes back to the planets, which wait where you left them. The map opens in the year the orrery shows.
+
+The grid is the galactic plane. Drop lines show how far above or below it each star sits, and the spokes point toward the galactic centre (Sagittarius), the direction of the Sun's orbit (Cygnus), the anticentre (Auriga) and l 270° (Vela).
+
+Pick a star and press `Enter` to **view from it**: the camera glides over, the grid recentres, and the panel shows how bright every other star, the Sun included, would look from there.
+
+**Time runs in years here**, up to 100,000 either way, with the slider at the bottom. Stars drift along their real space motions, leaving faint tracks back to where they are today. Watch Barnard's Star pass within 3.8 ly around 11,700 CE, or Ross 248 become our nearest neighbour around 38,000 CE.
+
+| Key | Action |
+|---|---|
+| `←` `→` / `h` `l` | rotate around the galactic pole |
+| `↑` `↓` / `k` `j` | tilt |
+| `+` `-` | zoom |
+| `i` | back to the true isometric view |
+| `a` | auto-spin |
+| `Tab` / `Shift-Tab` | next or previous star, nearest first |
+| `/` | find a star by name (`proxima`, `tau ceti`, `Gliese 876`, `Dog Star`) |
+| `Enter` / `v` | view from the selected star |
+| `s` / `Backspace` | back to the Sun |
+| `[` `]` | range: 10 → 15 → 20 → 30 → 50 → 70 ly |
+| `,` `.` | time slower or faster, through reverse: 10k ← 1k ← 100 ← 10 yr/s → 10 → 100 → 1k → 10k yr/s |
+| `space` | play or pause time |
+| `t` | back to the present, paused |
+| `y` | go to a year: `38000`, `10000 BCE`, `+5000` (from now), `-20000` |
+| `T` | motion tracks on or off |
+| `m` / `M` | mark the selected star, to measure the distance to another / clear the mark |
+| `g` `d` | grid, drop lines |
+| `n` | names: all → bright → none |
+| `p` | info panel |
+| `?` | key list |
+| `Esc` / `S` | back to the planets |
+| `q` | quit |
+
+Mouse: drag to rotate and tilt, scroll to zoom, click to select, double-click to view from a star, right-click to return to the Sun. Click or drag on the time slider to scrub through time.
+
+**On the map**, glyphs show intrinsic brightness: `●` for stars about as luminous as the Sun or more, `•` for K and early M dwarfs, `∙` for faint red dwarfs and white dwarfs, `·` for brown dwarfs. The most luminous stars get a halo. Colour follows spectral class, from blue-white A stars through yellow G and orange K to red M dwarfs, with pale blue for white dwarfs and magenta for brown dwarfs. Multiple systems such as α Centauri AB are drawn as one point, with their members listed in the panel.
+
+**The motion model** is heliocentric and straight-line: each star moves at constant velocity relative to the Sun, from its proper motion and radial velocity. Over tens of thousands of years that matches published close-approach predictions well; beyond that the stars' curved paths around the Galaxy matter, so the slider stops at ±100,000 years. Gravity between stars isn't modelled. A few objects (WISE 0855, SCR 1845's companion, LHS 292) have no measured radial velocity, so they move only across the sky and their panel speed is a lower bound.
+
+The catalog, in `orrery/stellar/catalog.py`, is compiled from the RECONS and Gaia DR3 nearby-star lists; distances are good to about 0.05 ly. Planet counts are confirmed planets and will go out of date. The star map also runs on its own with `python -m orrery.stellar` (options: `--radius 30`, `--from Sirius`, `--select "tau ceti"`, `--year 38000`).

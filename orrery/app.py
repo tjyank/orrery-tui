@@ -9,10 +9,11 @@ from datetime import datetime
 
 from . import settings
 from . import terminal as T
-from .bodies import ALL_BODIES, BY_KEY, PLANETS, USER_BODIES, register, unregister
+from .bodies import (ALL_BODIES, BY_KEY, J2000, ORBITING, PLANETS, USER_BODIES, approximate_orbit, register,
+                     unregister)
 from .controls import Controls
-from .ephemeris import (EphemerisService, Snapshot, best_moon_snapshot, best_snapshot, jd_now, jd_to_datetime,
-                        load_cache, offline_snapshot)
+from .ephemeris import (JD_MAX, JD_MIN, EphemerisService, Snapshot, best_moon_snapshot, best_snapshot, clamp_jd,
+                        jd_now, jd_to_datetime, load_cache, offline_snapshot)
 from .events import light_time
 from .feeds import EventFeed, MIN_FETCH_GAP_S, MoonFeed, REANCHOR_DRIFT_DAYS, REFRESH_EVERY_S
 from .jumps import datetime_to_jd
@@ -22,6 +23,8 @@ from .moons import MOONS_OF
 from .overlays import Overlays
 from .panels import Panels
 from .render import Camera, Canvas, SCALE_ORDER, Scene, SceneOptions, draw_scene, to_display
+from .stellar.app import StarMap
+from .stellar.motion import EPOCH as J2000_YEAR
 from .system import SystemScene, draw_system
 from .trails import build_trails
 from .ui import EVENT_ALERT_MAX_RATE, FLASH_S, JUMP_RESET_DAYS, MIN_PANEL_COLS, PANEL_W, RATES, REALTIME, vec_len, unit_vector
@@ -72,6 +75,9 @@ class App(Controls, Overlays, Panels):
         self.dragged = False
         self.last_click: tuple[str, float] | None = None
         self.disc: tuple[float, float, float] | None = None  # moon view: planet disc, terminal cells
+        # The star map (S): made on first use, then kept, so it reopens as it was left.
+        self.stars: StarMap | None = None
+        self.in_stars = False
 
         if not args.fresh and not args.once:
             self.apply_settings(settings.load())
@@ -145,6 +151,24 @@ class App(Controls, Overlays, Panels):
     def say(self, text: str, seconds: float = FLASH_S) -> None:
         self.flash, self.flash_until = text, time.monotonic() + seconds
 
+    # ---- the star map (S) ----------------------------------------------------------------
+    def open_stars(self) -> None:
+        """Out to the nearest stars, in the year the orrery shows. The orrery's clock stops meanwhile."""
+        if self.stars is None:
+            self.stars = StarMap(argparse.Namespace(radius=20.0, view_from=None, select=None, year=None,
+                                                    ascii=self.args.ascii, once=self.args.once, size=None,
+                                                    no_mouse=self.args.no_mouse), embedded=True)
+        self.stars.set_year(J2000_YEAR + (self.sim_jd - J2000) / 365.25)
+        self.stars.paused, self.stars.leave, self.stars.dirty = True, False, True
+        self.in_stars = True
+
+    def stars_key(self, key) -> None:
+        self.stars.handle(key)
+        if not self.stars.running:  # q: quit the whole app
+            self.running = False
+        elif self.stars.leave:
+            self.in_stars = False
+
     # ---- objects the user adds (/) and removes (X) ----------------------------------------
     def start_lookup(self, query: str) -> None:
         if not query.strip():
@@ -202,6 +226,11 @@ class App(Controls, Overlays, Panels):
         self.finish_lookup()
         snap = self.service.take()
         if snap is not None:
+            # A fetch that began before a body was added (/) doesn't know it: give it its offline
+            # orbit, or the panel and trails would look up a body with no position.
+            for b in ORBITING:
+                if b.key not in snap.orbits:
+                    snap.orbits[b.key] = approximate_orbit(b, self.sim_jd)
             self.snapshot = snap
             if snap.source == "live":
                 self.last_live_at = time.monotonic()
@@ -244,6 +273,8 @@ class App(Controls, Overlays, Panels):
 
     # ---- time jumps -------------------------------------------------------------------
     def jump_to(self, jd: float, select: str | None = None, system: str | None = None, rate: int | None = None) -> None:
+        if not JD_MIN <= jd <= JD_MAX:  # before any state changes, so a bad target leaves the view as it was
+            raise ValueError("date out of range: years 1 to 9985")
         far = abs(jd - self.sim_jd) > JUMP_RESET_DAYS
         self.sim_jd = self.last_alert_jd = jd
         self.paused = False
@@ -275,6 +306,9 @@ class App(Controls, Overlays, Panels):
 
     def frame_rows(self, cols: int, rows: int) -> list[str]:
         """The frame as self-positioning row strings (see Canvas.render_rows)."""
+        if self.in_stars:
+            self.n_overlay = 0
+            return self.stars.frame_rows(cols, rows)
         cols, rows = max(cols, 40), max(rows, 12)
         panel = self.show_panel and cols >= MIN_PANEL_COLS
         scene_cols = cols - PANEL_W if panel else cols
@@ -374,29 +408,38 @@ class App(Controls, Overlays, Panels):
         try:
             with T.Terminal(mouse=not self.args.no_mouse) as term:
                 last = time.monotonic()
-                shown, shown_size, shown_state = [], None, None
+                shown, shown_size, shown_state, shown_stars = [], None, None, False
+                stars_frames = 0  # counts star-map changes, so each one makes a new state
                 while self.running:
                     now = time.monotonic()
                     dt, last = now - last, now
                     for key in term.read_keys():
                         self.handle(key)
-                    if not self.paused:
-                        self.sim_jd += RATES[self.rate_idx] * dt / DAY_S
-                    if self.spin:
-                        self.active_cam.rotate(dyaw=dt * math.radians(12))
-                    self.poll_data()
                     size = term.size()
-                    # Drawing a frame costs tens of milliseconds; input is checked every tick, but a
-                    # frame is drawn only when something it shows has changed. At real time that's
-                    # about once a second (the clock), so an idle orrery barely uses the CPU.
-                    state = self._view_state(size)
+                    if self.in_stars:
+                        # The star map keeps its own time (years, not seconds) and says when it changed.
+                        self.stars.tick(dt)
+                        if self.stars.dirty:
+                            stars_frames += 1
+                            self.stars.dirty = False
+                        state = ("stars", size, stars_frames)
+                    else:
+                        if not self.paused:
+                            self.sim_jd = clamp_jd(self.sim_jd + RATES[self.rate_idx] * dt / DAY_S)
+                        if self.spin:
+                            self.active_cam.rotate(dyaw=dt * math.radians(12))
+                        self.poll_data()
+                        # Drawing a frame costs tens of milliseconds; input is checked every tick, but a
+                        # frame is drawn only when something it shows has changed. At real time that's
+                        # about once a second (the clock), so an idle orrery barely uses the CPU.
+                        state = self._view_state(size)
                     if state == shown_state:
                         time.sleep(max(0.0, 1 / 30 - (time.monotonic() - now)))
                         continue
                     shown_state = state
                     rows = self.frame_rows(*size)
-                    if size != shown_size or len(rows) != len(shown):
-                        # resized, or the legend opened or closed: clear and redraw everything
+                    if size != shown_size or len(rows) != len(shown) or self.in_stars != shown_stars:
+                        # resized, the legend opened or closed, or to or from the star map: redraw everything
                         term.write("\x1b[2J" + "".join(rows))
                     else:  # only the rows that changed; most of a still scene doesn't
                         base = len(rows) - self.n_overlay
@@ -404,7 +447,7 @@ class App(Controls, Overlays, Panels):
                         # A changed row beneath the legend erases part of it, so repaint the legend too.
                         overlay = "".join(rows[base:]) if changed or rows[base:] != shown[base:] else ""
                         term.write(changed + overlay)
-                    shown, shown_size = rows, size
+                    shown, shown_size, shown_stars = rows, size, self.in_stars
                     time.sleep(max(0.0, 1 / 30 - (time.monotonic() - now)))
         finally:
             if not self.args.fresh:
@@ -424,11 +467,14 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--once", action="store_true", help="print a single frame to stdout and exit")
     ap.add_argument("--size", default=None, help="frame size for --once, e.g. 140x40")
     ap.add_argument("--system", choices=[p.key for p in PLANETS], help="start in this planet's moon system view")
+    ap.add_argument("--stars", action="store_true", help="start in the map of the nearest stars (S switches views)")
     ap.add_argument("--fresh", action="store_true", help="ignore (and don't save) remembered view settings")
     ap.add_argument("--no-mouse", action="store_true", help="don't capture the mouse (keeps terminal text selection)")
     args = ap.parse_args(argv)
 
     app = App(args)
+    if args.stars:
+        app.open_stars()
     if args.once:
         app.snapshot = best_snapshot(app.sim_jd, allow_network=not args.offline)
         if args.system and args.system != "earth":  # Earth's Moon is analytic: nothing to fetch

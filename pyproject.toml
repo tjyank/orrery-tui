@@ -43,4 +43,4 @@ dev = ["pytest>=8"]
 orrery = "orrery.app:main"
 
 [tool.setuptools]
-packages = ["orrery"]
+packages = ["orrery", "orrery.stellar"]

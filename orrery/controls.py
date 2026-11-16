@@ -34,7 +34,10 @@ class Controls:
             if target is None:
                 self.say(f"{preset.label}: none found in the next few years")
             else:
-                self.jump_to(target, preset.select, preset.system, preset.rate)
+                try:
+                    self.jump_to(target, preset.select, preset.system, preset.rate)
+                except ValueError as exc:
+                    self.say(f"{preset.label}: {exc}")
 
     def handle_menu(self, key: str) -> None:
         if self.menu in ("date", "add"):  # the one-line text prompts
@@ -46,9 +49,14 @@ class Controls:
             elif key == T.ENTER:
                 self.menu = None
                 try:
-                    self.jump_to(parse_when(self.prompt, self.sim_jd))
+                    jd = parse_when(self.prompt, self.sim_jd)
                 except (ValueError, OverflowError):
                     self.say(f"Couldn't read {self.prompt!r}: try 2061-07-28, 1989-08-25 03:56, +30d or -2y")
+                else:
+                    try:
+                        self.jump_to(jd)
+                    except ValueError as exc:
+                        self.say(f"Can't jump to {self.prompt!r}: {exc}")
             elif key == T.BACKSPACE:
                 self.prompt = self.prompt[:-1]
             elif len(key) == 1 and key.isprintable() and len(self.prompt) < 32:
@@ -63,7 +71,7 @@ class Controls:
             self.menu_idx = (self.menu_idx + 1) % n
         elif key == T.ENTER:
             self.choose(self.menu_idx)
-        elif key.isdigit() and 0 < int(key) <= min(n, 9):
+        elif key in "123456789" and len(key) == 1 and int(key) <= n:  # not isdigit(): it accepts '²', which int() rejects
             self.choose(int(key) - 1)
 
     # ---- input ------------------------------------------------------------------------
@@ -74,6 +82,9 @@ class Controls:
         return [b.key for b in ALL_BODIES if self.opts.show_small or not b.small]
 
     def handle(self, key) -> None:
+        if self.in_stars:  # the star map has its own keys and mouse
+            self.stars_key(key)
+            return
         if isinstance(key, T.Mouse):
             self.handle_mouse(key)
             return
@@ -100,6 +111,8 @@ class Controls:
         elif key in ("[", "]") and self.system:
             i = planets.index(self.system)
             self.enter_system(planets[(i + (1 if key == "]" else -1)) % len(planets)])
+        elif key == "S":
+            self.open_stars()
         elif key == "/":
             self.menu, self.prompt = "add", ""
         elif key == "X":
