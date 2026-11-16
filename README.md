@@ -121,7 +121,7 @@ Pick a star and press `Enter` to **view from it**: the camera glides over, the g
 | `,` `.` | time slower or faster, through reverse: 10k ← 1k ← 100 ← 10 yr/s → 10 → 100 → 1k → 10k yr/s |
 | `space` | play or pause time |
 | `t` | back to the present, paused |
-| `y` | go to a year: `38000`, `10000 BCE`, `+5000` (from now), `-20000` |
+| `y` | go to a year: `38000`, `10000 BCE`, `+5000`, `-20000` |
 | `T` | motion tracks on or off |
 | `m` / `M` | mark the selected star, to measure the distance to another / clear the mark |
 | `g` `d` | grid, drop lines |
@@ -135,6 +135,4 @@ Mouse: drag to rotate and tilt, scroll to zoom, click to select, double-click to
 
 **On the map**, glyphs show intrinsic brightness: `●` for stars about as luminous as the Sun or more, `•` for K and early M dwarfs, `∙` for faint red dwarfs and white dwarfs, `·` for brown dwarfs. The most luminous stars get a halo. Colour follows spectral class, from blue-white A stars through yellow G and orange K to red M dwarfs, with pale blue for white dwarfs and magenta for brown dwarfs. Multiple systems such as α Centauri AB are drawn as one point, with their members listed in the panel.
 
-**The motion model** is heliocentric and straight-line: each star moves at constant velocity relative to the Sun, from its proper motion and radial velocity. Over tens of thousands of years that matches published close-approach predictions well; beyond that the stars' curved paths around the Galaxy matter, so the slider stops at ±100,000 years. Gravity between stars isn't modelled. A few objects (WISE 0855, SCR 1845's companion, LHS 292) have no measured radial velocity, so they move only across the sky and their panel speed is a lower bound.
-
-The catalog, in `orrery/stellar/catalog.py`, is compiled from the RECONS and Gaia DR3 nearby-star lists; distances are good to about 0.05 ly. Planet counts are confirmed planets and will go out of date. The star map also runs on its own with `python -m orrery.stellar` (options: `--radius 30`, `--from Sirius`, `--select "tau ceti"`, `--year 38000`).
+**The motion model** is heliocentric and straight-line: each star moves at constant velocity relative to the Sun, from its proper motion and radial velocity. Over tens of thousands of years that matches published close-approach predictions well; beyond that the stars' curved paths around the Galaxy matter, so the slider stops at ±100,000 years. Gravity between stars isn't modelled. A few objects have no measured radial velocity, so they move only across the sky and their panel speed is a lower bound.
